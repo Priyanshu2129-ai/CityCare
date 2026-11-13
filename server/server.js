@@ -29,6 +29,7 @@ const {
   loginHandler,
   logoutHandler,
   meHandler,
+  adminAuthDiagnostics,
   csrfGuard
 } = require('./auth');
 
@@ -67,8 +68,35 @@ try {
   else console.log('[EMAIL-SETUP] No SMTP/Gmail credentials configured yet.');
 } catch (e) { /* diagnostics must never crash the server */ }
 
+// Secret-free startup auth diagnostics: only PRESENCE booleans (never values).
+try {
+  const d = adminAuthDiagnostics();
+  console.log('[AUTH-SETUP]', JSON.stringify({ ...d, bcryptCompare: 'not-run' }));
+} catch (e) { console.error('[AUTH-SETUP] diagnostic error'); }
+
 const app = express();
 app.disable('x-powered-by'); // remove the Express header
+
+/* ---- Reverse proxy trust (safe, Render-aware) ----
+   Must be set BEFORE any middleware that depends on req.ip / req.secure, e.g.
+   the login rate limiter and secure-cookie session. Render terminates TLS and
+   forwards the client's IP in X-Forwarded-For, so behind Render the client IP
+   is correctly resolved only when Express trusts that one proxy hop.
+
+   We deliberately do NOT use trust proxy = true / '*' (that would let any
+   client spoof X-Forwarded-For). Instead we trust only the immediate reverse
+   proxy hop:
+     - production: 1 (Render's single TLS-terminating proxy)
+     - development: false (no proxy locally)
+   An explicit TRUST_PROXY env value overrides this if your host differs. */
+const TRUST_PROXY = String(process.env.TRUST_PROXY || (IS_PROD ? '1' : 'false'));
+if (TRUST_PROXY === 'false') {
+  app.set('trust proxy', false);
+} else if (TRUST_PROXY === 'true' || TRUST_PROXY === 'all') {
+  app.set('trust proxy', 1); // never 'all' - always cap at the immediate proxy
+} else {
+  app.set('trust proxy', Number(TRUST_PROXY));
+}
 
 /* ---- Security headers (always, but stricter in production) ---- */
 app.use(helmet({

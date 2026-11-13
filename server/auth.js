@@ -31,9 +31,33 @@ function assertAdminConfigured() {
   }
 }
 
-// Verify a provided password against the stored bcrypt hash.
+// Verify a provided password against the stored bcrypt hash. Returns a result
+// object so callers can distinguish "password wrong" from "hash unusable"
+// without ever exposing the hash/password. Never logs secrets.
 async function verifyPassword(plain) {
-  return bcrypt.compare(String(plain || ''), ADMIN_PASSWORD_HASH);
+  // Guard: a malformed env hash must fail closed (and be reported) rather than
+  // throwing inside the request handler.
+  if (!ADMIN_PASSWORD_HASH || !/^\$2[aby]\$/.test(ADMIN_PASSWORD_HASH)) {
+    return { ok: false, reason: 'BAD_HASH_CONFIG' };
+  }
+  try {
+    const matched = await bcrypt.compare(String(plain || ''), ADMIN_PASSWORD_HASH);
+    return { ok: !!matched, reason: matched ? 'MATCH' : 'MISMATCH' };
+  } catch (err) {
+    return { ok: false, reason: 'BCRYPT_ERROR' };
+  }
+}
+
+// Safe, secret-free diagnostics. Reports only whether each required variable is
+// PRESENT and whether a compare SUCCEEDED or FAILED - never their values.
+function adminAuthDiagnostics(compareResult) {
+  return {
+    adminUsernamePresent: Boolean(process.env.ADMIN_USERNAME),
+    adminPasswordHashPresent: Boolean(process.env.ADMIN_PASSWORD_HASH),
+    adminPasswordHashLooksBcrypt: /^\$2[aby]\$/.test(String(process.env.ADMIN_PASSWORD_HASH || '')),
+    sessionSecretPresent: Boolean(process.env.SESSION_SECRET),
+    bcryptCompare: compareResult || 'not-run' // 'not-run' | 'MATCH' | 'MISMATCH' | 'ERROR'
+  };
 }
 
 /* ---- Session configuration ----
@@ -116,8 +140,13 @@ async function loginHandler(req, res) {
   const u = String(req.body && req.body.username || '').trim();
   const p = String(req.body && req.body.password || '');
   const okUser = !!ADMIN_USERNAME && u === ADMIN_USERNAME;
-  const okPass = await verifyPassword(p);
-  if (!okUser || !okPass) {
+  const pw = await verifyPassword(p);
+  // okUser can still gate, but we only reveal login success when BOTH match.
+  if (!okUser || !pw.ok) {
+    // X-Forwarded-For is the client IP when trust proxy honours Render's proxy.
+    const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    // Secret-free diagnostic: presence booleans + compare result only.
+    console.warn('[AUTH] login failed', JSON.stringify(adminAuthDiagnostics(pw.reason)), `ip=${ip}`);
     return res.status(401).json({ ok: false, error: 'INVALID_CREDENTIALS', message: 'Invalid username or password.' });
   }
   // Regenerate the session id on login to prevent session fixation.
@@ -169,5 +198,7 @@ module.exports = {
   csrfGuard,
   loginHandler,
   logoutHandler,
-  meHandler
+  meHandler,
+  adminAuthDiagnostics,
+  verifyPassword
 };

@@ -396,22 +396,45 @@ async function handleContactSubmit(e) {
 }
 
 /* Run once per page load: if the email backend is reachable and configured,
-   surface a subtle hint on the contact page. Failure is silent. */
+   surface a subtle hint on the contact page. Never authenticates and never
+   reads or sends email here - this only pings /api/health.
+   Diagnostics are secret-safe: we only log the HTTP status and a coarse
+   reason (NETWORK_FAILURE / BAD_RESPONSE / NOT_CONFIGURED), never credentials. */
 function checkMailStatus() {
   const badge = $('#mailStatusHint');
-  try {
-    fetch(CONTACT_API + '/api/health', { method: 'GET' })
-      .then((r) => r.json().catch(() => null))
-      .then((d) => {
-        if (!badge || !d || !d.ok) return;
-        // Prefer the structured `email` block when present; fall back to the
-        // legacy top-level emailConfigured flag.
-        const email = (d.email && typeof d.email === 'object') ? d.email : { configured: !!d.emailConfigured };
-        if (email.configured) badge.textContent = (email.sendVerified ? 'Online' : 'Configured');
-        else badge.textContent = 'Email not configured';
-      })
-      .catch(() => { if (badge) badge.textContent = 'Email service offline'; });
-  } catch (e) { /* ignore */ }
+  if (!badge) return;
+  const endpoint = CONTACT_API + '/api/health';
+
+  fetch(endpoint, { method: 'GET', cache: 'no-store' })
+    .then((r) => r.json().catch(() => null).then((data) => ({ status: r.status, ok: r.ok, data })))
+    .then(({ status, ok, data }) => {
+      const d = data;
+      if (!d || typeof d !== 'object' || !d.ok || status !== 200) {
+        // Backend responded but not as a healthy health-check (e.g. wrong
+        // origin serving HTML/404, or DNS). Log a secret-free diagnostic.
+        console.warn(`[contact] health check returned unexpected response status=${status} (endpoint=${endpoint})`);
+        badge.textContent = 'Email service offline';
+        badge.title = 'Health check did not return a valid response from the server.';
+        return;
+      }
+      // Prefer the structured `email` block; fall back to the legacy flag.
+      const email = (d.email && typeof d.email === 'object') ? d.email : { configured: !!d.emailConfigured, sendVerified: false };
+      if (email.configured === true) {
+        // Configured means a Gmail/SMTP transport can be built. Only treat a
+        // message as actually sent when the /api/contact SMTP send succeeds.
+        badge.textContent = email.sendVerified ? 'Online' : 'Configured';
+        badge.title = (email.setupProblem) ? email.setupProblem : 'Email service is configured.';
+        return;
+      }
+      badge.textContent = 'Email not configured';
+      badge.title = 'SMTP/Gmail credentials are not set on the server.';
+    })
+    .catch((err) => {
+      // Network / CORS / mixed-content / blocked request. Log a coarse reason only.
+      console.warn('[contact] email health check failed: NETWORK_FAILURE', `endpoint=${endpoint}`);
+      badge.textContent = 'Email service offline';
+      badge.title = 'Could not reach the email health endpoint (network, CORS, or mixed-content).';
+    });
 }
 
 /* ---------- Actions (delegated via data-action + data-module="contact") ---------- */

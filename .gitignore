@@ -1,0 +1,16 @@
+# Backend secrets - never commit
+server/.env
+.env
+.env.*
+!.env.example
+
+# Node dependencies
+node_modules/
+**/node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Runtime data
+server/data/

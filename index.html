@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CityCare Hospital Management System</title>
+  <meta name="description" content="CityCare Hospital management system: patients, doctors, appointments, billing, pharmacy, lab and more.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Login screen -->
+  <div class="login-screen" id="loginScreen">
+    <div class="login-card">
+      <div class="login-brand">
+        <span class="logo-sm" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l2 6 3-14 3 10 2-2h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="login-name">CityCare Hospital</span>
+        <span class="login-sub">Management System</span>
+      </div>
+      <form id="loginForm" novalidate>
+        <div class="form-group">
+          <label for="loginUser">Username</label>
+          <input class="input" id="loginUser" autocomplete="username" placeholder="admin">
+        </div>
+        <div class="form-group">
+          <label for="loginPass">Password</label>
+          <input class="input" id="loginPass" type="password" autocomplete="current-password" placeholder="password">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+        <p class="login-hint">Default: admin / admin123</p>
+      </form>
+    </div>
+  </div>
+
+  <div class="layout" id="appLayout" hidden>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <span class="logo-sm" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l2 6 3-14 3 10 2-2h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <div class="brand-text">
+          <span class="brand-name" id="brandText">CityCare</span>
+          <span class="brand-sub">Hospital</span>
+        </div>
+      </div>
+
+      <div class="nav">
+      <div class="nav-group">
+        <a href="#dashboard" data-page="dashboard" class="nav-link active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+          Dashboard
+        </a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Clinical</div>
+        <a href="#patients" data-page="patients" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1"/><circle cx="9.5" cy="7.5" r="3.5"/><path d="M17 10v4M19 12h-4"/></svg>
+          Patients
+        </a>
+        <a href="#doctors" data-page="doctors" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a5 5 0 0 1 5-5h6a5 5 0 0 1 5 5v1"/><path d="M19 3v4M21 5h-4"/></svg>
+          Doctors
+        </a>
+        <a href="#appointments" data-page="appointments" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
+          Appointments
+        </a>
+        <a href="#departments" data-page="departments" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/></svg>
+          Departments
+        </a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Operation</div>
+        <a href="#billing" data-page="billing" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-2-1.4-2 1.4-2-1.4L10 21l-2-1.4L6 21V3z"/><path d="M9 8h6M9 12h6"/></svg>
+          Billing &amp; Payments
+        </a>
+        <a href="#pharmacy" data-page="pharmacy" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 2h4"/><path d="M6 6h12l-1 2v12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V8L6 6z"/><path d="M9 13h6M12 10v6"/></svg>
+          Pharmacy
+        </a>
+        <a href="#laboratory" data-page="laboratory" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3h6M10 3v6L4 19a2 2 0 0 0 1.7 3h12.6a2 2 0 0 0 1.7-3L14 9V3"/><path d="M7 15h10"/></svg>
+          Laboratory
+        </a>
+        <a href="#records" data-page="records" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>
+          Medical Records
+        </a>
+        <a href="#staff" data-page="staff" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a5 5 0 0 1 5-5h6a5 5 0 0 1 5 5v1"/></svg>
+          Staff
+        </a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Insights</div>
+        <a href="#analytics" data-page="analytics" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 13l3-4 3 3 4-6"/><path d="M20 6v6"/></svg>
+          Analytics
+        </a>
+        <a href="#reports" data-page="reports" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>
+          Reports
+        </a>
+        <a href="#financial" data-page="financial" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Financial Overview
+        </a>
+        <a href="#activity" data-page="activity" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          Activity Logs
+        </a>
+        <a href="#settings" data-page="settings" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5h.1a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"/></svg>
+          Settings
+        </a>
+        <a href="#" class="nav-link" id="logoutLink">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
+          Logout
+        </a>
+      </div>
+
+      <div class="nav-group">
+        <a href="#contact" data-page="contact" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.13.96.36 1.9.7 2.8a2 2 0 0 1-.45 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.45c.9.34 1.84.57 2.8.7a2 2 0 0 1 1.7 2.05z"/></svg>
+          Contact Us
+        </a>
+      </div>
+
+      </div>
+
+      <div class="sidebar-footer">
+        <span class="footer-dot" aria-hidden="true"></span>
+        <span>Data saved locally</span>
+      </div>
+    </aside>
+
+    <!-- Mobile top bar -->
+    <header class="topbar">
+      <button class="icon-button menu-toggle" id="menuToggle" aria-label="Open menu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="topbar-brand" id="topbarBrand">CityCare</div>
+      <div class="topbar-right">
+        <span class="topbar-date" id="topbarDate"></span>
+        <span class="admin-chip">Admin</span>
+      </div>
+    </header>
+
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- Main content -->
+    <main class="main" id="main">
+
+      <!-- Dashboard -->
+      <section id="page-dashboard" class="page active" tabindex="-1">
+        <div id="mount-dashboard"></div>
+      </section>
+
+      <!-- Every other section body is rendered into its own mount container by its module -->
+      <section id="page-patients" class="page" tabindex="-1"><div id="mount-patients"></div></section>
+      <section id="page-doctors" class="page" tabindex="-1"><div id="mount-doctors"></div></section>
+      <section id="page-appointments" class="page" tabindex="-1"><div id="mount-appointments"></div></section>
+      <section id="page-departments" class="page" tabindex="-1"><div id="mount-departments"></div></section>
+      <section id="page-billing" class="page" tabindex="-1"><div id="mount-billing"></div></section>
+      <section id="page-pharmacy" class="page" tabindex="-1"><div id="mount-pharmacy"></div></section>
+      <section id="page-laboratory" class="page" tabindex="-1"><div id="mount-laboratory"></div></section>
+      <section id="page-records" class="page" tabindex="-1"><div id="mount-records"></div></section>
+      <section id="page-staff" class="page" tabindex="-1"><div id="mount-staff"></div></section>
+      <section id="page-reports" class="page" tabindex="-1"><div id="mount-reports"></div></section>
+      <section id="page-analytics" class="page" tabindex="-1"><div id="mount-analytics"></div></section>
+      <section id="page-financial" class="page" tabindex="-1"><div id="mount-financial"></div></section>
+      <section id="page-activity" class="page" tabindex="-1"><div id="mount-activity"></div></section>
+      <section id="page-settings" class="page" tabindex="-1"><div id="mount-settings"></div></section>
+      <section id="page-contact" class="page" tabindex="-1"><div id="mount-contact"></div></section>
+
+      <!-- Global footer -->
+      <footer class="site-footer" id="siteFooter"></footer>
+    </main>
+  </div>
+
+  <!-- Shared modal -->
+  <div class="modal-overlay" id="modalOverlay" aria-hidden="true" inert>
+    <div class="modal" id="modal" role="dialog" aria-modal="true"></div>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/modules/dashboard.js"></script>
+  <script src="js/modules/patients.js"></script>
+  <script src="js/modules/doctors.js"></script>
+  <script src="js/modules/appointments.js"></script>
+  <script src="js/modules/departments.js"></script>
+  <script src="js/modules/billing.js"></script>
+  <script src="js/modules/pharmacy.js"></script>
+  <script src="js/modules/laboratory.js"></script>
+  <script src="js/modules/records.js"></script>
+  <script src="js/modules/staff.js"></script>
+  <script src="js/modules/reports.js"></script>
+  <script src="js/modules/analytics.js"></script>
+  <script src="js/modules/financial.js"></script>
+  <script src="js/modules/activity.js"></script>
+  <script src="js/modules/settings.js"></script>
+  <script src="js/modules/contact.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

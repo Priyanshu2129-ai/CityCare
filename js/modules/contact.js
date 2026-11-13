@@ -141,7 +141,7 @@ function render() {
       <!-- Form -->
       <div class="card contact-form-card">
         <div class="card-head"><h2>Send us a message</h2><span class="chip chip-teal" id="mailStatusHint" title="Email delivery service status">Checking...</span></div>
-        <form id="contactForm" novalidate onsubmit="return false">
+        <form id="contactForm" novalidate>
           <div class="form-grid">
             <div class="form-group">
               <label for="cf-name">Full Name *</label>

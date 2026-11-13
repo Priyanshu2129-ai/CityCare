@@ -21,7 +21,7 @@ function showLogin() {
   const u = $('#loginUser'); if (u) u.focus();
 }
 
-function boot() {
+async function boot() {
   Auth.ensure();            // ensure admin exists (default admin/admin123)
   seedIfEmpty();            // seed departments/patients/doctors/etc if brand new
   initShell();              // bind mobile sidebar toggle on every load (auth-independent)
@@ -31,10 +31,23 @@ function boot() {
   const brand = $('#brandText'); if (brand) brand.textContent = s.hospitalName;
   const tb = $('#topbarBrand'); if (tb) tb.textContent = s.hospitalName;
 
-  // Login: the SERVER is the authoritative authentication gate (verifies the
-  // bcrypt admin hash and issues a persistent httpOnly session). The local
-  // Auth.verify is only used as an offline-dev fallback when the backend is
-  // unreachable (the protected patient API will still 401 in that case).
+  // Login: the SERVER is the ONLY authentication gate. It verifies the bcrypt
+  // admin hash and issues a persistent httpOnly session cookie. The dashboard
+  // opens ONLY after the server confirms login AND a valid /api/auth/me
+  // session. There is no client-side fallback, so a dashboard always has a
+  // working server session (protected APIs like /api/patients will not 401).
+  //
+  // verifyServerSession() returns true only when the backend holds a valid
+  // session for this browser. Everything depends on this.
+  async function verifyServerSession() {
+    try {
+      const r = await apiRequest('/api/auth/me');
+      return !!(r && r.ok && r.data && r.data.ok);
+    } catch (err) {
+      return false; // backend unreachable or error
+    }
+  }
+
   $('#loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const u = $('#loginUser').value.trim();
@@ -42,25 +55,33 @@ function boot() {
     const btn = e.target.querySelector('button[type="submit"]');
     if (btn) { btn.disabled = true; btn.textContent = 'Signing in...'; }
 
-    let serverOk = false;
+    let loginOk = false;
+    let serverReachable = true;
     try {
       const r = await apiLogin(u, p);
-      serverOk = !!(r && r.ok);
+      loginOk = !!(r && r.ok);
     } catch (err) {
-      serverOk = false; // backend unreachable
+      serverReachable = false; // backend unreachable
     }
 
-    const localOk = Auth.verify(u, p);
-    const authed = serverOk || (localOk && !serverOk); // server wins; local only when offline
+    // Even if login returned ok, confirm the session is real before opening.
+    let sessionOk = false;
+    if (loginOk) {
+      const me = await apiRequest('/api/auth/me');
+      sessionOk = !!(me && me.ok && me.data && me.data.ok);
+    }
 
     if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
+    const name = (sessionOk && Auth.get().name) || 'Admin';
 
-    if (authed) {
+    if (sessionOk) {
       Session.start();
       showApp();
-      toast('Welcome back, ' + (Auth.get().name || 'Admin'), 'success');
+      toast('Welcome back, ' + name + '.', 'success');
       initApp();
-      if (serverOk) refreshPatientsFromServer();
+      refreshPatientsFromServer();
+    } else if (!serverReachable) {
+      toast('Unable to reach the server. Please check that the backend is running.', 'error');
     } else {
       toast('Invalid username or password.', 'error');
     }
@@ -77,10 +98,20 @@ function boot() {
     history.replaceState(null, '', '#dashboard');
   });
 
-  // Route guard: if logged in, boot; else login screen.
+  // Route guard: a dashboard requires a VALID server session. If sessionStorage
+  // claims we were logged in, confirm with /api/auth/me; if the server session
+  // is gone (expired/cleared), show the login screen instead of a dashboard
+  // whose protected APIs would all return 401.
   if (Session.isAuthed()) {
-    showApp();
-    initApp();
+    const ok = await verifyServerSession();
+    if (ok) {
+      showApp();
+      initApp();
+      refreshPatientsFromServer();
+    } else {
+      Session.end();
+      showLogin();
+    }
   } else {
     showLogin();
   }

@@ -37,13 +37,35 @@ const {
 try {
   assertAdminConfigured();
   assertSessionSecret();
-  if (!String(process.env.MONGODB_URI || '').trim()) {
+  const uri = String(process.env.MONGODB_URI || '').trim();
+  if (!uri) {
     throw new Error('DATABASE SECURITY: set MONGODB_URI in server/.env. The app requires MongoDB for sessions and patient data.');
+  }
+  // Reject malformed MongoDB URIs at startup with a clear message instead of a
+  // confusing (and async) MongoParseError crash from connect-mongo. Use the same
+  // parser the driver uses so validation is authoritative. Never print the URI
+  // (it may contain credentials) - only a safe setup hint.
+  try {
+    const { ConnectionString } = require('mongodb-connection-string-url');
+    new ConnectionString(uri); // throws MongoParseError if malformed
+  } catch (uriErr) {
+    const hint = String(uriErr && uriErr.message || '').includes('port')
+      ? ' Your mongodb+srv URI should NOT include a port number (remove :xxxx after the host).'
+      : ' Use the exact "mongodb+srv://" string from MongoDB Atlas.';
+    throw new Error('DATABASE SECURITY: MONGODB_URI is not a valid MongoDB connection string.' + hint);
   }
 } catch (e) {
   console.error('[STARTUP-FAIL] ' + e.message);
   process.exit(1);
 }
+
+// Secret-safe startup email diagnostics (never print credentials).
+try {
+  const cfg = gmailSetupDiagnostic();
+  if (cfg) console.error('[EMAIL-SETUP] ' + cfg);
+  else if (process.env.GMAIL_USER || process.env.SMTP_HOST) console.log('[EMAIL-SETUP] SMTP/Gmail credentials present (will still be verified at send time).');
+  else console.log('[EMAIL-SETUP] No SMTP/Gmail credentials configured yet.');
+} catch (e) { /* diagnostics must never crash the server */ }
 
 const app = express();
 app.disable('x-powered-by'); // remove the Express header
@@ -208,6 +230,77 @@ function buildTransport() {
   });
 }
 
+/* ---- Secret-safe SMTP diagnostics ----
+   We never log credentials. Nodemailer/SMTP errors are classified into a
+   small set of safe reason codes so the deployed server can tell us WHY an
+   email failed (auth vs network vs blocked) without exposing the password,
+   token, or connection string. */
+const SMTP_DIAGNOSTIC_TIMEOUT_MS = 15000;
+
+function classifySendError(err) {
+  // Nodemailer wraps transport errors in code=EAUTH, ECONNECTION etc.
+  const code = String((err && err.code) || (err && err.responseCode) || '');
+  const raw = String((err && err.message) || '').toLowerCase();
+  const rc = {
+    reason: 'UNKNOWN',
+    detail: 'Email delivery failed with an unknown error.',
+    redacted: true
+  };
+
+  // Identifier: never echo credentials. Errors are classified by code/text.
+  // Authentication failure (bad password / app password / user)
+  if (code === 'EAUTH' || /(authentication failed|invalid login|bad username|535|username and password not accepted)/.test(raw)) {
+    rc.reason = 'SMTP_AUTH_FAILED';
+    rc.detail = 'SMTP/Gmail rejected the credentials (wrong user, wrong App Password, or the Google account is not using 2-Step Verification + an App Password).';
+    return rc;
+  }
+  // Relay / access denied
+  if (/(relay|access is denied|530|not permitted|sender is not allowed)/.test(raw)) {
+    rc.reason = 'SMTP_ACCESS_DENIED';
+    rc.detail = 'SMTP relay/access denied for this sender. Check FROM_EMAIL and sender permissions for the account.';
+    return rc;
+  }
+  // Connection/host/network failure (check the error code first, then text)
+  if (/^(ECONNECTION|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|EAI_AGAIN|ESOCKET)$/.test(code) ||
+      /econnection|econnreset|econnrefused|enetunreach|eai_again|etimedout|timed out|dns|getaddrinfo|socket hang up/.test(raw)) {
+    rc.reason = 'SMTP_NETWORK';
+    rc.detail = 'Could not reach the SMTP/Gmail server (network, timeout, or blocked SMTP port).';
+    return rc;
+  }
+  // Rate limiting / throttling
+  if (/(rate limit|too many|throttl|quota|421)/.test(raw)) {
+    rc.reason = 'SMTP_RATE_LIMITED';
+    rc.detail = 'The email provider rate-limited or rejected the message as possible spam.';
+    return rc;
+  }
+  // Sender/recipient validation
+  if (/(sender address rejected|553|recipient address rejected|550)/.test(raw)) {
+    rc.reason = 'SMTP_ADDRESS_REJECTED';
+    rc.detail = 'The sender or recipient address was rejected. Check FROM_EMAIL / ADMIN_EMAIL format.';
+    return rc;
+  }
+
+  rc.reason = 'SMTP_OTHER';
+  rc.detail = 'Email delivery failed (see classified reason).';
+  return rc;
+}
+
+// Validate the Google App Password shape early (16 chars, no spaces) so the
+// admin sees a clear setup error instead of a confusing send-time failure.
+// Returns null when OK, or a safe setup-instruction string when not.
+function gmailSetupDiagnostic() {
+  if (!process.env.GMAIL_USER) return null;
+  const appPass = String(process.env.GMAIL_APP_PASSWORD || '');
+  if (!appPass) {
+    return 'GMAIL_APP_PASSWORD is empty. Set a Google App Password (not your account password).';
+  }
+  const stripped = appPass.replace(/[-\s]/g, '');
+  if (stripped.length !== 16 || !/^[a-z]{4}[a-z]{4}[a-z]{4}[a-z]{4}$/i.test(stripped)) {
+    return 'GMAIL_APP_PASSWORD does not look like a Google App Password (it must be 16 characters with no spaces). Get one at https://myaccount.google.com/apppasswords after enabling 2-Step Verification.';
+  }
+  return null;
+}
+
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || (process.env.GMAIL_USER || process.env.SMTP_USER || 'admin@citycare.example');
 const FROM_EMAIL = process.env.FROM_EMAIL || ADMIN_EMAIL;
 
@@ -234,6 +327,12 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     emailConfigured: configured,
+    email: {
+      configured,
+      provider: process.env.SMTP_HOST ? 'smtp' : 'gmail',
+      setupProblem: gmailSetupDiagnostic(), // safe setup guidance, never credentials
+      sendVerified: false // set to true after a real send succeeds
+    },
     database: {
       configured: DB_STATE.status !== 'not-configured',
       status: DB_STATE.status,
@@ -247,8 +346,22 @@ app.get('/api/health', (req, res) => {
 
 /* ---- Session middleware (persistent MongoDB store, secure cookie) ----
    Mounted before the authenticated routes. Session is only created after a
-   successful login (saveUninitialized:false). */
-app.use(buildSessionMiddleware());
+   successful login (saveUninitialized:false).
+   The store is constructed eagerly by connect-mongo, which throws a
+   MongoParseError for a malformed URI. Wrap it so a bad/misconfigured
+   MONGODB_URI produces a clear, secret-safe startup failure instead of a raw
+   stack trace - and never expose the URI/credentials in the message. */
+let sessionMiddleware;
+try {
+  sessionMiddleware = buildSessionMiddleware();
+} catch (e) {
+  const hint = String(e && e.message || '').includes('port') ? ' (detected: mongodb+srv URI contains a port - remove it)' : '';
+  console.error(
+    '[STARTUP-FAIL] Session store could not be created. Check that MONGODB_URI is a valid, reachable MongoDB connection string.' + hint
+  );
+  process.exit(1);
+}
+app.use(sessionMiddleware);
 
 /* ---- Auth routes (cookie-based sessions). Login/logout are the gate; only
    /api/auth/me and protected resources require an existing session. ---- */
@@ -346,12 +459,18 @@ app.post('/api/contact', async (req, res) => {
   } catch (err) {
     // Persist the enquiry regardless so it is not lost, but report clearly.
     saveEnquiry(record);
-    console.error('Email send failed:', err.message);
+    // Secret-safe: log only the classified reason + a redacted error message,
+    // never credentials, the App Password, or the connection string.
+    const diag = classifySendError(err);
+    const redactedMsg = String(err && err.message || '').replace(/[\r\n]/g, ' ').slice(0, 200);
+    console.error(`Email send failed: reason=${diag.reason}`, redactedMsg ? `| (${redactedMsg})` : '');
     return res.status(500).json({
       ok: false,
       savedLocally: true,
       error: 'SEND_FAILED',
-      message: 'The email provider rejected the request. Please check the server SMTP/Gmail credentials and try again. Your enquiry was saved but the email was not sent.'
+      reason: diag.reason,
+      setupProblem: gmailSetupDiagnostic(), // safe, credential-free guidance
+      message: diag.detail + ' Your enquiry was saved but the email was not sent.'
     });
   }
 });

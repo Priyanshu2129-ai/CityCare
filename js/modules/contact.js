@@ -14,9 +14,13 @@ registerPage('contact', { render, open, onAction });
 let msgQuery = '';
 let msgFilter = 'all'; // all | new | read | resolved
 
-// Where the email backend lives. Adjust CONTACT_API if the Node server runs
-// on a different host/port in your deployment.
-const CONTACT_API = (window.CITYCARE_CONTACT_API || 'http://localhost:3000').replace(/\/$/, '');
+// Where the email backend lives. Defaults to SAME-ORIGIN (''), like the rest
+// of the app's apiRequest: the deployed backend (e.g. on Render) and the
+// Contact form share one origin, so relative /api/... calls hit the real
+// server. This fixes the prior bug where the deployed page posted to the
+// visitor's own "localhost:3000" and always showed "Email service offline".
+// Set window.CITYCARE_CONTACT_API only when the backend is on another origin.
+const CONTACT_API = (window.CITYCARE_CONTACT_API || '').replace(/\/$/, '');
 let contactSending = false; // guards against duplicate submissions
 
 const STATUS_META = {
@@ -399,10 +403,12 @@ function checkMailStatus() {
     fetch(CONTACT_API + '/api/health', { method: 'GET' })
       .then((r) => r.json().catch(() => null))
       .then((d) => {
-        if (badge && d && d.ok) {
-          if (d.emailConfigured) badge.textContent = 'Online';
-          else badge.textContent = 'Email not configured';
-        }
+        if (!badge || !d || !d.ok) return;
+        // Prefer the structured `email` block when present; fall back to the
+        // legacy top-level emailConfigured flag.
+        const email = (d.email && typeof d.email === 'object') ? d.email : { configured: !!d.emailConfigured };
+        if (email.configured) badge.textContent = (email.sendVerified ? 'Online' : 'Configured');
+        else badge.textContent = 'Email not configured';
       })
       .catch(() => { if (badge) badge.textContent = 'Email service offline'; });
   } catch (e) { /* ignore */ }

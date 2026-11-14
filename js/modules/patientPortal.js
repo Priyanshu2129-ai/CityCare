@@ -257,8 +257,15 @@
   async function renderBook() {
     const mount = $('#patientMount');
     mount.innerHTML = '<div class="patient-card"><p>Loading doctors...</p></div>';
-    // Doctors are stored in LocalStorage on the frontend (existing admin module).
-    const doctors = window.Store ? window.Store.getAll('doctors') : [];
+    // Doctors are managed on the frontend in LocalStorage via the Store global
+    // (data.js defines Store as a `const`, so it is NOT exposed on window.Store).
+    // The admin dashboard reads this same store; using the bare `Store` binding
+    // guarantees the Booking page sees the same doctors admins manage.
+    let all = [];
+    try { all = (typeof Store !== 'undefined' && Store.getAll ? Store.getAll('doctors') : []) || []; }
+    catch (e) { all = []; }
+    // Only offer doctors still marked available for booking.
+    const doctors = all.filter((d) => d.available !== false);
     if (!doctors.length) {
       mount.innerHTML = '<div class="patient-card"><p class="patient-muted">No doctors are currently available.</p></div>';
       return;

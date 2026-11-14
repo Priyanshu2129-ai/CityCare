@@ -29,6 +29,8 @@ const {
   loginHandler,
   logoutHandler,
   meHandler,
+  requireLogin,
+  requireAdmin,
   adminAuthDiagnostics,
   csrfGuard
 } = require('./auth');
@@ -265,6 +267,13 @@ function buildTransport() {
    token, or connection string. */
 const SMTP_DIAGNOSTIC_TIMEOUT_MS = 15000;
 
+// ---- Email delivery verification state ----
+// `emailVerified` is ONLY set true after a real transporter.sendMail() succeeds.
+// Credentials/config present (emailConfigured) does NOT mean delivery works.
+// resetting it to false on any new attempt keeps the health state honest.
+let emailVerified = false; // changed only by the email verification endpoint
+const emailVerify = { lastAttempt: 0, cooldownMs: 60000 }; // >1 min between live SMTP probes
+
 function classifySendError(err) {
   // Nodemailer wraps transport errors in code=EAUTH, ECONNECTION etc.
   const code = String((err && err.code) || (err && err.responseCode) || '');
@@ -359,7 +368,7 @@ app.get('/api/health', (req, res) => {
       configured,
       provider: process.env.SMTP_HOST ? 'smtp' : 'gmail',
       setupProblem: gmailSetupDiagnostic(), // safe setup guidance, never credentials
-      sendVerified: false // set to true after a real send succeeds
+      sendVerified: emailVerified // true ONLY after a real SMTP send succeeds
     },
     database: {
       configured: DB_STATE.status !== 'not-configured',
@@ -396,6 +405,56 @@ app.use(sessionMiddleware);
 app.post('/api/auth/login', loginLimiter, loginHandler);
 app.post('/api/auth/logout', csrfGuard, logoutHandler);
 app.get('/api/auth/me', meHandler);
+
+/* ---- Email delivery verification ----
+   Admin-only + CSRF-protected + rate-limited. Registered AFTER the session
+   middleware so requireAdmin can read req.session. It sends ONE real test
+   email to ADMIN_EMAIL to prove Gmail/SMTP delivery. Only reports success after
+   transporter.sendMail() resolves; on failure returns a classified, secret-safe
+   reason. The 60s cooldown is an ADDITIONAL safeguard, not a substitute for
+   auth. */
+app.post('/api/email/verify', requireAdmin, csrfGuard, async (req, res) => {
+  const now = Date.now();
+  if (now - emailVerify.lastAttempt < emailVerify.cooldownMs) {
+    return res.status(429).json({
+      ok: false, error: 'COOLDOWN',
+      message: 'Wait a moment before sending another test email.'
+    });
+  }
+  let transporter;
+  try { transporter = buildTransport(); }
+  catch (e) {
+    return res.status(503).json({
+      ok: false, error: 'MAIL_NOT_CONFIGURED',
+      message: 'Email is not configured. Add SMTP or Gmail credentials to the server environment and restart.'
+    });
+  }
+  emailVerify.lastAttempt = now;
+  emailVerified = false; // a new attempt invalidates any previous "verified" state
+  const mailOptions = {
+    from: `CityCare <${process.env.FROM_EMAIL || ADMIN_EMAIL}>`,
+    to: ADMIN_EMAIL,
+    replyTo: ADMIN_EMAIL,
+    subject: '[CityCare] Email delivery verification test',
+    text: 'This is a delivery-verification test from the CityCare Hospital contact system. If you received this, outgoing email is working.'
+  };
+  try {
+    await transporter.sendMail(mailOptions);
+    emailVerified = true;
+    return res.json({ ok: true, emailVerified: true, message: 'Test email accepted by the email provider. Delivery verified.' });
+  } catch (err) {
+    const diag = classifySendError(err);
+    const redactedMsg = String(err && err.message || '').replace(/[\r\n]/g, ' ').slice(0, 200);
+    console.error('Email verification FAILED:', `reason=${diag.reason}`, redactedMsg ? `| (${redactedMsg})` : '');
+    return res.status(500).json({
+      ok: false,
+      error: 'SEND_FAILED',
+      reason: diag.reason,
+      setupProblem: gmailSetupDiagnostic(),
+      message: diag.detail + ' No email was sent.'
+    });
+  }
+});
 
 /* ---- Patients module (MongoDB CRUD, admin-only) ---- */
 app.use('/api/patients', patientRouter);

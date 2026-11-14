@@ -104,19 +104,38 @@ function render() {
     render();
   });
 
-  $('#pwdForm').addEventListener('submit', (e) => {
+  $('#pwdForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const oldPw = $('#pwd-old').value;
     const newPw = $('#pwd-new').value;
     const confirmPw = $('#pwd-confirm').value;
     let ok = true;
     if (!oldPw) { setFieldError('pwd-old', 'Enter current password'); ok = false; } else clearFieldError('pwd-old');
-    if (!newPw || newPw.length < 5) { setFieldError('pwd-new', 'New password must be at least 5 characters'); ok = false; } else clearFieldError('pwd-new');
+    if (newPw.length < 10) { setFieldError('pwd-new', 'New password must be at least 10 characters'); ok = false; }
+    else if (!/[A-Z]/.test(newPw) || !/[a-z]/.test(newPw) || !/\d/.test(newPw)) { setFieldError('pwd-new', 'Use upper and lower case letters and a number'); ok = false; }
+    else clearFieldError('pwd-new');
     if (newPw !== confirmPw) { setFieldError('pwd-confirm', 'Passwords do not match'); ok = false; } else clearFieldError('pwd-confirm');
     if (!ok) return;
-    if (!Auth.changePassword(oldPw, newPw)) { setFieldError('pwd-old', 'Current password is incorrect'); return; }
-    e.target.reset();
-    toast('Password changed successfully.', 'success');
+
+    const btn = e.target.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Updating...'; }
+    const r = await apiRequest('/api/auth/change-password', {
+      method: 'POST',
+      body: { currentPassword: oldPw, newPassword: newPw, confirmPassword: confirmPw }
+    });
+    if (btn) { btn.disabled = false; btn.textContent = 'Update Password'; }
+    if (r && r.ok && r.data && r.data.ok) {
+      e.target.reset();
+      toast(r.data.message || 'Password changed successfully.', 'success');
+    } else if (r && r.status === 401) {
+      setFieldError('pwd-old', r.data && r.data.message || 'Current password is incorrect');
+    } else if (r && r.status === 400) {
+      const msg = r.data && r.data.message || 'Invalid password.';
+      if (msg.toLowerCase().includes('current')) setFieldError('pwd-old', msg);
+      else setFieldError('pwd-new', msg);
+    } else {
+      toast((r && r.data && r.data.message) || 'Could not change the password.', 'error');
+    }
   });
 
   $('#prefsSave').addEventListener('click', () => {

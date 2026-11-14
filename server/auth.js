@@ -9,6 +9,7 @@
 
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const { verifyAdminPassword: verifyEffectivePassword } = require('./security');
 
 const NODE_ENV = String(process.env.NODE_ENV || 'development');
 const IS_PROD = NODE_ENV === 'production';
@@ -140,7 +141,9 @@ async function loginHandler(req, res) {
   const u = String(req.body && req.body.username || '').trim();
   const p = String(req.body && req.body.password || '');
   const okUser = !!ADMIN_USERNAME && u === ADMIN_USERNAME;
-  const pw = await verifyPassword(p);
+  // Verify against the effective admin hash: the MongoDB-persisted hash if one
+  // exists (password was changed), otherwise the env ADMIN_PASSWORD_HASH.
+  const pw = await verifyEffectivePassword(p);
   // okUser can still gate, but we only reveal login success when BOTH match.
   if (!okUser || !pw.ok) {
     // X-Forwarded-For is the client IP when trust proxy honours Render's proxy.

@@ -11,6 +11,35 @@
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+/* ---- MongoDB-backed module state (mirror of the server). Mongo is the single
+   source of truth; renderers read `state` and mirror to LocalStorage through
+   syncDoctorsToLocal so other pages (dashboard, reports, appointments, portal)
+   keep working unchanged. ---- */
+let state = { doctors: [], loaded: false, loading: false, error: null, q: '' };
+const DOCTORS_API = (window.CITYCARE_API_BASE || '').replace(/\/$/, '');
+
+async function loadDoctors(force) {
+  if (state.loading) return;
+  if (!force && state.loaded) return;
+  state.loading = true;
+  state.error = null;
+  render();
+  const { ok, data } = await apiRequest('/api/doctors');
+  if (ok && data && data.ok) {
+    state.doctors = Array.isArray(data.doctors) ? data.doctors : [];
+    syncDoctorsToLocal(state.doctors); // read-only mirror for other pages
+    state.error = null;
+  } else {
+    // Keep the last server-verified cache; never invent or upload local data.
+    state.error = (data && data.error === 'UNAUTHORIZED')
+      ? 'Please sign in to manage doctors.'
+      : 'Could not load doctors from the server.';
+  }
+  state.loading = false;
+  state.loaded = true;
+  render();
+}
+
 function drDefaults() {
   return {
     id: genDoctorId(),
@@ -120,7 +149,7 @@ function doctorFormHTML(p) {
   </form>`;
 }
 
-function handleDoctorForm(e, id) {
+async function handleDoctorForm(e, id) {
   e.preventDefault();
   const val = (sel) => ($(sel) ? $(sel).value.trim() : '');
   const num = (sel) => Number($(sel) ? $(sel).value.trim() : 0) || 0;
@@ -153,14 +182,37 @@ function handleDoctorForm(e, id) {
   ]);
   if (!ok) return;
 
-  const record = { ...data, id: isEdit ? id : genDoctorId(), avatarColor: (Store.getById('doctors', id) || {}).avatarColor || data.avatarColor || 'teal' };
+  // Preserve avatarColor on edit (matches prior behaviour); the server keeps
+  // whatever value is not overwritten.
+  if (!isEdit) data.avatarColor = ['teal', 'purple', 'orange', 'green'][Math.floor(Math.random() * 4)];
 
-  if (isEdit) Store.update('doctors', id, record);
-  else Store.add('doctors', record);
+  const btn = $('#doctorForm') && $('#doctorForm').querySelector('button[type="submit"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
 
-  closeModal();
-  refreshAll();
-  toast(isEdit ? 'Doctor record updated.' : 'Doctor added successfully.', 'success');
+  // Single source of truth is Mongo: write through the API. On any failure the
+  // record is NOT saved locally; the modal stays open and the error is shown.
+  const res = isEdit
+    ? await apiRequest('/api/doctors/' + encodeURIComponent(id), { method: 'PATCH', body: data })
+    : await apiRequest('/api/doctors', { method: 'POST', body: data });
+
+  if (btn) { btn.disabled = false; btn.textContent = isEdit ? 'Save Changes' : 'Add Doctor'; }
+
+  if (res.ok && res.data && res.data.ok) {
+    closeModal();
+    state.loaded = false; // force re-fetch from server on refresh
+    await loadDoctors(true);
+    refreshAll();
+    toast(isEdit ? 'Doctor record updated.' : 'Doctor added successfully.', 'success');
+  } else {
+    const errors = (res.data && res.data.errors) || {};
+    setFieldError('df-name', errors.name || '');
+    setFieldError('df-spec', errors.specialization || '');
+    setFieldError('df-dept', errors.department || '');
+    setFieldError('df-phone', errors.phone || '');
+    setFieldError('df-fees', errors.fees || '');
+    setFieldError('df-email', errors.email || '');
+    if (!Object.keys(errors).length) toast((res.data && res.data.message) || 'Could not save the doctor.', 'error');
+  }
 }
 
 /* ---------- view modal ---------- */
@@ -267,15 +319,22 @@ function doctorsTableHTML(list) {
 function render() {
   const mount = document.getElementById('mount-doctors');
   if (!mount) return;
-  const q = doctorQuery().trim();
-  const list = Store.getAll('doctors').filter((d) => {
-    const s = q.toLowerCase();
-    return !s ||
-      d.name.toLowerCase().includes(s) ||
-      (d.id || '').toLowerCase().includes(s) ||
-      (d.specialization || '').toLowerCase().includes(s) ||
-      (d.department || '').toLowerCase().includes(s);
+  // Ensure a server fetch happens once (cached mirrors then keep UI instant).
+  if (!state.loaded && !state.loading) { loadDoctors(); }
+  const q = (state.q || '').trim().toLowerCase();
+  const list = state.doctors.filter((d) => {
+    return !q ||
+      String(d.name || '').toLowerCase().includes(q) ||
+      String(d.id || '').toLowerCase().includes(q) ||
+      String(d.specialization || '').toLowerCase().includes(q) ||
+      String(d.department || '').toLowerCase().includes(q);
   });
+
+  const body = state.error
+    ? `<div class="empty-block" style="color:var(--rose-600)">${esc(state.error)}</div>`
+    : (state.loading && !state.doctors.length)
+      ? `<div class="empty-block">Loading doctors...</div>`
+      : doctorsTableHTML(list);
 
   mount.innerHTML = `
     <div class="page-head">
@@ -291,11 +350,11 @@ function render() {
     <div class="table-toolbar">
       <div class="search-input">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-        <input class="input" id="doctorsSearch" data-doctors-search value="${esc(q)}" placeholder="Search name, ID, specialization...">
+        <input class="input" id="doctorsSearch" data-doctors-search value="${esc(state.q || '')}" placeholder="Search name, ID, specialization...">
       </div>
       <span class="muted-text" style="color:var(--muted);font-size:12.5px;">${list.length} doctor${list.length === 1 ? '' : 's'}</span>
     </div>
-    ${doctorsTableHTML(list)}
+    ${body}
   `;
 }
 
@@ -309,7 +368,7 @@ function open() {
 function onAction(e, btn) {
   const action = btn.dataset.action;
   const id = btn.dataset.id;
-  const d = Store.getById('doctors', id);
+  const d = state.doctors.find((x) => String(x.id) === String(id)) || Store.getById('doctors', id);
   if (!d) return;
 
   if (action === 'view') {
@@ -322,10 +381,18 @@ function onAction(e, btn) {
       title: 'Delete Doctor',
       message: `Delete the record for ${d.name} (${d.id})? This cannot be undone.`,
       confirmText: 'Delete',
-      onConfirm: () => {
-        Store.remove('doctors', id);
-        refreshAll();
-        toast('Doctor record deleted.', 'success');
+      onConfirm: async () => {
+        const res = await apiRequest('/api/doctors/' + encodeURIComponent(id), { method: 'DELETE' });
+        if (res.ok && res.data && res.data.ok) {
+          // Remove from the server-backed state and re-mirror. History is not
+          // touched (patientAppointments keep their own doctorId/name snapshot).
+          state.doctors = state.doctors.filter((x) => String(x.id) !== String(id));
+          syncDoctorsToLocal(state.doctors);
+          refreshAll();
+          toast('Doctor record deleted.', 'success');
+        } else {
+          toast((res.data && res.data.message) || 'Could not delete the doctor.', 'error');
+        }
       }
     });
   }
@@ -334,6 +401,7 @@ function onAction(e, btn) {
 /* search input listener - registered once at load */
 document.addEventListener('input', (e) => {
   if (e.target && e.target.matches && (e.target.matches('#doctorsSearch') || e.target.matches('[data-doctors-search]'))) {
+    state.q = e.target.value;
     render();
   }
 });

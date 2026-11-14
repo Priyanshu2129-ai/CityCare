@@ -17,6 +17,33 @@ function depDefaults() {
   };
 }
 
+/* ---- MongoDB-backed module state. Mongo is the single source of truth;
+   renderers read `state` and mirror to LocalStorage through
+   syncDepartmentsToLocal so other pages keep working unchanged. ---- */
+let state = { departments: [], loaded: false, loading: false, error: null, q: '' };
+let deptEditId = null;
+
+async function loadDepartments(force) {
+  if (state.loading) return;
+  if (!force && state.loaded) return;
+  state.loading = true;
+  state.error = null;
+  render();
+  const { ok, data } = await apiRequest('/api/departments');
+  if (ok && data && data.ok) {
+    state.departments = Array.isArray(data.departments) ? data.departments : [];
+    syncDepartmentsToLocal(state.departments); // read-only mirror for other pages
+    state.error = null;
+  } else {
+    state.error = (data && data.error === 'UNAUTHORIZED')
+      ? 'Please sign in to manage departments.'
+      : 'Could not load departments from the server.';
+  }
+  state.loading = false;
+  state.loaded = true;
+  render();
+}
+
 function departmentCardIcon(name) {
   // simple deterministic color by department name
   const colors = ['teal', 'purple', 'orange', 'green'];
@@ -82,7 +109,7 @@ function departmentFormHTML(p) {
   </form>`;
 }
 
-function handleDepartmentForm(e, id) {
+async function handleDepartmentForm(e, id) {
   e.preventDefault();
   const val = (sel) => ($(sel) ? $(sel).value.trim() : '');
 
@@ -96,9 +123,6 @@ function handleDepartmentForm(e, id) {
   };
 
   const isEdit = !!id;
-  // prevent duplicate names
-  const dup = Store.getAll('departments').find((d) =>
-    String(d.id) !== String(id) && d.name.toLowerCase() === data.name.toLowerCase());
 
   const ok = validateForm([
     { id: 'dep-name', value: data.name, test: (v) => v.length >= 2, msg: 'Department name is required (min 2 characters).' },
@@ -106,19 +130,34 @@ function handleDepartmentForm(e, id) {
   ]);
   if (!ok) return;
 
-  if (dup) {
-    setFieldError('dep-name', 'A department with this name already exists.');
-    return;
+  const btn = $('#departmentForm') && $('#departmentForm').querySelector('button[type="submit"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+
+  // Write through the API (Mongo is the source of truth). Unique-name and other
+  // server checks apply; a failed write is NOT saved locally and the modal stays.
+  const res = isEdit
+    ? await apiRequest('/api/departments/' + encodeURIComponent(id), { method: 'PATCH', body: data })
+    : await apiRequest('/api/departments', { method: 'POST', body: data });
+
+  if (btn) { btn.disabled = false; btn.textContent = isEdit ? 'Save Changes' : 'Add Department'; }
+
+  if (res.ok && res.data && res.data.ok) {
+    closeModal();
+    state.loaded = false;
+    await loadDepartments(true);
+    refreshAll();
+    toast(isEdit ? 'Department updated.' : 'Department added successfully.', 'success');
+  } else {
+    const errors = (res.data && res.data.errors) || {};
+    setFieldError('dep-name', errors.name || '');
+    setFieldError('dep-phone', errors.phone || '');
+    const msg = (res.data && res.data.message) || '';
+    // Distinguish the 409 duplicate-name/assigned cases for a clear message.
+    if (!Object.keys(errors).length) {
+      if (res.status === 409) setFieldError('dep-name', msg || 'A department with this name already exists.');
+      else toast(msg || 'Could not save the department.', 'error');
+    }
   }
-
-  const record = { ...data, id: isEdit ? id : genDepartmentId(), name: capitalize(data.name) };
-
-  if (isEdit) Store.update('departments', id, record);
-  else Store.add('departments', record);
-
-  closeModal();
-  refreshAll();
-  toast(isEdit ? 'Department updated.' : 'Department added successfully.', 'success');
 }
 
 /* ---------- view modal ---------- */
@@ -215,14 +254,20 @@ function departmentsTableHTML(list) {
 function render() {
   const mount = document.getElementById('mount-departments');
   if (!mount) return;
-  const q = departmentQuery().trim();
-  const list = Store.getAll('departments').filter((d) => {
-    const s = q.toLowerCase();
-    return !s ||
-      d.name.toLowerCase().includes(s) ||
-      (d.id || '').toLowerCase().includes(s) ||
-      (d.head || '').toLowerCase().includes(s);
+  if (!state.loaded && !state.loading) { loadDepartments(); }
+  const q = (state.q || '').trim().toLowerCase();
+  const list = state.departments.filter((d) => {
+    return !q ||
+      String(d.name || '').toLowerCase().includes(q) ||
+      String(d.id || '').toLowerCase().includes(q) ||
+      String(d.head || '').toLowerCase().includes(q);
   });
+
+  const body = state.error
+    ? `<div class="empty-block" style="color:var(--rose-600)">${esc(state.error)}</div>`
+    : (state.loading && !state.departments.length)
+      ? `<div class="empty-block">Loading departments...</div>`
+      : departmentsTableHTML(list);
 
   mount.innerHTML = `
     <div class="page-head">
@@ -238,11 +283,11 @@ function render() {
     <div class="table-toolbar">
       <div class="search-input">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-        <input class="input" id="departmentsSearch" data-departments-search value="${esc(q)}" placeholder="Search name, ID or head...">
+        <input class="input" id="departmentsSearch" data-departments-search value="${esc(state.q || '')}" placeholder="Search name, ID or head...">
       </div>
       <span class="muted-text" style="color:var(--muted);font-size:12.5px;">${list.length} department${list.length === 1 ? '' : 's'}</span>
     </div>
-    ${departmentsTableHTML(list)}
+    ${body}
   `;
 }
 
@@ -256,7 +301,7 @@ function open() {
 function onAction(e, btn) {
   const action = btn.dataset.action;
   const id = btn.dataset.id;
-  const d = Store.getById('departments', id);
+  const d = state.departments.find((x) => String(x.id) === String(id)) || Store.getById('departments', id);
   if (!d) return;
 
   if (action === 'view') {
@@ -269,10 +314,18 @@ function onAction(e, btn) {
       title: 'Delete Department',
       message: `Delete the ${d.name} department (${d.id})? This cannot be undone.`,
       confirmText: 'Delete',
-      onConfirm: () => {
-        Store.remove('departments', id);
-        refreshAll();
-        toast('Department deleted.', 'success');
+      onConfirm: async () => {
+        const res = await apiRequest('/api/departments/' + encodeURIComponent(id), { method: 'DELETE' });
+        if (res.ok && res.data && res.data.ok) {
+          state.departments = state.departments.filter((x) => String(x.id) !== String(id));
+          syncDepartmentsToLocal(state.departments);
+          refreshAll();
+          toast('Department deleted.', 'success');
+        } else if (res.status === 409) {
+          toast((res.data && res.data.message) || 'Cannot delete: doctors are still assigned to this department.', 'error');
+        } else {
+          toast((res.data && res.data.message) || 'Could not delete the department.', 'error');
+        }
       }
     });
   }
@@ -281,6 +334,7 @@ function onAction(e, btn) {
 /* search input listener - registered once at load */
 document.addEventListener('input', (e) => {
   if (e.target && e.target.matches && (e.target.matches('#departmentsSearch') || e.target.matches('[data-departments-search]'))) {
+    state.q = e.target.value;
     render();
   }
 });

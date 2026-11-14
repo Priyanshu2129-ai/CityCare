@@ -163,7 +163,7 @@
     const mount = $('#patientMount');
     mount.innerHTML = `
       <div class="patient-card">
-        <h2>Patient Sign In</h2>
+        <h1>Patient Sign In</h1>
         <p class="patient-muted">Use the phone number and password you registered with.</p>
         <form id="patientLoginForm" novalidate>
           <div class="form-group"><label for="pl-phone">Phone Number</label><input class="input" id="pl-phone" inputmode="tel" autocomplete="tel" placeholder="e.g. 555-7100"></div>
@@ -217,6 +217,20 @@
       const phone = $('#pr-phone').value.trim();
       const password = $('#pr-pass').value;
       const confirmPassword = $('#pr-confirm').value;
+
+      // Client-side validation (server remains authoritative).
+      const phoneDigits = String(phone || '').replace(/\D/g, '').length;
+      let valid = true;
+      if (name.length < 2) { setFieldError('pr-name', 'Please enter your full name (at least 2 characters).'); valid = false; }
+      else clearFieldError('pr-name');
+      if (!phone || phoneDigits < 7 || phoneDigits > 15) { setFieldError('pr-phone', 'Enter a valid phone number (7–15 digits).'); valid = false; }
+      else clearFieldError('pr-phone');
+      if (password.length < 6) { setFieldError('pr-pass', 'Password must be at least 6 characters.'); valid = false; }
+      else clearFieldError('pr-pass');
+      if (password !== confirmPassword) { setFieldError('pr-confirm', 'Passwords do not match.'); valid = false; }
+      else clearFieldError('pr-confirm');
+      if (!valid) return;
+
       const btn = e.target.querySelector('button[type="submit"]');
       if (btn) { btn.disabled = true; btn.textContent = 'Creating...'; }
       const r = await api('/api/patient/register', { method: 'POST', body: JSON.stringify({ name, phone, password, confirmPassword }) });
@@ -225,12 +239,11 @@
         window.toast('Account created! Please sign in.', 'success');
         go('patient-login');
       } else if (r.status === 409) {
+        setFieldError('pr-phone', r.data.message || 'That phone number is already registered.');
         window.toast(r.data.message || 'That phone number is already registered.', 'error');
       } else {
         const errors = r.data && r.data.errors;
-        const mountEl = $('#patientMount');
         if (errors) {
-          const any = $('#pr-name'); // re-anchor errors near the form
           const box = $('#patientRegisterForm');
           if (box) box.insertAdjacentHTML('afterbegin', fieldError(Object.values(errors).join(' &middot; ')));
         } else {
@@ -257,15 +270,18 @@
   async function renderBook() {
     const mount = $('#patientMount');
     mount.innerHTML = '<div class="patient-card"><p>Loading doctors...</p></div>';
-    // Doctors are managed on the frontend in LocalStorage via the Store global
-    // (data.js defines Store as a `const`, so it is NOT exposed on window.Store).
-    // The admin dashboard reads this same store; using the bare `Store` binding
-    // guarantees the Booking page sees the same doctors admins manage.
-    let all = [];
-    try { all = (typeof Store !== 'undefined' && Store.getAll ? Store.getAll('doctors') : []) || []; }
-    catch (e) { all = []; }
-    // Only offer doctors still marked available for booking.
-    const doctors = all.filter((d) => d.available !== false);
+    // Doctors now come from the backend (MongoDB is the single source of truth).
+    // /api/doctors/available is a PUBLIC endpoint returning only available,
+    // active doctors with a whitelisted field subset (id, name, specialization,
+    // department, fees, availableDays, hours). The option value is the stable
+    // doctor `id`, so booking POSTs keep an unchanged doctorId reference.
+    let doctors = [];
+    try {
+      const r = await api('/api/doctors/available', {});
+      if (r.ok && r.data && r.data.ok && Array.isArray(r.data.doctors)) {
+        doctors = r.data.doctors.filter((d) => d && d.available !== false);
+      }
+    } catch (e) { doctors = []; }
     if (!doctors.length) {
       mount.innerHTML = '<div class="patient-card"><p class="patient-muted">No doctors are currently available.</p></div>';
       return;

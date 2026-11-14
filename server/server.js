@@ -17,8 +17,11 @@ const helmet = require('helmet');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const nodemailer = require('nodemailer');
+const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 const { router: patientRouter, seedPatientsIfEmpty } = require('./patient');
+const { seedDepartmentsIfEmpty } = require('./department');
+const { seedDoctorsIfEmpty } = require('./doctor');
 const NODE_ENV = String(process.env.NODE_ENV || 'development');
 const {
   IS_PROD,
@@ -218,6 +221,9 @@ mongoose.connection.on('connected', () => {
   // If a fresh Atlas database was just connected, seed the fictional demo
   // patients so the Patients page has data (only when the collection is empty).
   seedPatientsIfEmpty();
+  // Departments must seed before Doctors so doctor.department names resolve.
+  seedDepartmentsIfEmpty();
+  setTimeout(() => seedDoctorsIfEmpty(), 500);
   // One-time import of any legacy JSON enquiries so no data is lost (Stage 1).
   importLegacyJsonEnquiries();
 });
@@ -452,6 +458,57 @@ app.post('/api/auth/login', loginLimiter, loginHandler);
 app.post('/api/auth/logout', csrfGuard, logoutHandler);
 app.get('/api/auth/me', meHandler);
 
+/* ---- Admin password change (server-side, persistent) ----
+   Authenticated + CSRF-protected. Verifies the current password against the
+   effective (DB-or-env) hash, validates the new password, stores the new
+   bcrypt hash in MongoDB (survives restarts), and invalidates other admin
+   sessions. Never returns or logs the hash. */
+app.post('/api/auth/change-password', requireAdmin, csrfGuard, async (req, res) => {
+  const {
+    verifyAdminPassword,
+    validateNewPassword,
+    saveAdminPasswordHash,
+    invalidateOtherAdminSessions,
+    currentAdminHash
+  } = require('./security');
+  const current = String(req.body && req.body.currentPassword || '');
+  const next = String(req.body && req.body.newPassword || '');
+  const confirm = String(req.body && req.body.confirmPassword || '');
+
+  // Verify current password.
+  const check = await verifyAdminPassword(current);
+  if (check.reason === 'BAD_HASH_CONFIG') {
+    return res.status(500).json({ ok: false, error: 'CONFIG', message: 'Admin password is not configured correctly on the server.' });
+  }
+  if (!check.ok) {
+    return res.status(401).json({ ok: false, error: 'INVALID_CURRENT_PASSWORD', message: 'Current password is incorrect.' });
+  }
+
+  // Validate + match new password.
+  const v = validateNewPassword(next);
+  if (!v.ok) return res.status(400).json({ ok: false, error: 'WEAK_PASSWORD', message: v.message });
+  if (next !== confirm) {
+    return res.status(400).json({ ok: false, error: 'PASSWORD_MISMATCH', message: 'New password and confirmation do not match.' });
+  }
+  if (next === current) {
+    return res.status(400).json({ ok: false, error: 'SAME_PASSWORD', message: 'New password must differ from the current password.' });
+  }
+
+  try {
+    const hash = await bcrypt.hash(next, 12);
+    await saveAdminPasswordHash(hash);
+  } catch (e) {
+    console.error('[auth] password change persist failed:', String(e && e.message || 'error').slice(0, 120));
+    return res.status(500).json({ ok: false, error: 'SERVER_ERROR', message: 'Could not save the new password. Please try again.' });
+  }
+
+  // Invalidate other admin sessions (current session keeps working).
+  const sid = req.sessionID;
+  await invalidateOtherAdminSessions(sid);
+
+  return res.json({ ok: true, message: 'Password changed. Other admin sessions have been signed out.' });
+});
+
 /* ---- Email delivery verification ----
    Admin-only + CSRF-protected + rate-limited. Registered AFTER the session
    middleware so requireAdmin can read req.session. It sends ONE real test
@@ -504,6 +561,14 @@ app.post('/api/email/verify', requireAdmin, csrfGuard, async (req, res) => {
 
 /* ---- Patients module (MongoDB CRUD, admin-only) ---- */
 app.use('/api/patients', patientRouter);
+
+/* ---- Doctors + Departments modules (MongoDB CRUD, admin-only write;
+   /api/doctors/available is a public whitelisted directory for the Patient
+   Portal). --- */
+const departmentRouter = require('./department').router;
+const doctorRouter = require('./doctor').router;
+app.use('/api/departments', departmentRouter);
+app.use('/api/doctors', doctorRouter);
 
 /* ---- Patient Portal (separate role 'patient'; isolated from admin) ----
    Patient accounts + auth and patient appointments. These routers mount their
@@ -674,8 +739,24 @@ app.use((err, req, res, next) => {
 /* ---- Serve the frontend from the same origin ----
    This makes the httpOnly session cookie a first-party cookie (no cross-site
    third-party-cookie blocking) and is the recommended deployment layout: the
-   web app and its API share one origin. */
+   web app and its API share one origin.
+   The frontend (index.html, css/, js/) lives in the repo parent of server/,
+   so WEB_ROOT must be that parent. To avoid exposing backend source or data,
+   requests into server/, api/ (non-route files) and dotfiles are rejected here
+   BEFORE express.static touches them. dotfiles would anyway be ignored by the
+   static middleware, but this guard also hides backend .js source. */
 const WEB_ROOT = path.join(__dirname, '..');
+app.use((req, res, next) => {
+  const raw = (req.url || '').split('?')[0];
+  const seg = raw.split('/').filter(Boolean);
+  const first = (seg[0] || '').toLowerCase();
+  // Block backend source/dirs and dotfiles (including .env) from static serving.
+  if (first === 'server' || first === 'api' || first === 'node_modules' || first === 'data' ||
+      (seg[0] && seg[0].startsWith('.'))) {
+    return res.status(404).json({ ok: false, error: 'NOT_FOUND', message: 'Not found.' });
+  }
+  next();
+});
 app.use(express.static(WEB_ROOT));
 app.get('/', (req, res) => res.sendFile(path.join(WEB_ROOT, 'index.html')));
 app.use((req, res) => res.status(404).json({ ok: false, error: 'NOT_FOUND', message: 'Not found.' }));

@@ -66,6 +66,25 @@ function syncPatientsToLocal(patients) {
   Store.write('patients', patients.map((p) => ({ ...p })));
 }
 
+/* ---- Read-only mirror of Mongo doctors/departments into the LocalStorage
+   display cache. MongoDB is the single source of truth; these replace the local
+   array wholesale from a SERVER response. They are only ever called after a
+   successful API request and never upload local data (no direction reverse).
+   Mongo-only fields (_id, timestamps) are stripped so the cache keeps the
+   exact shape the UI renderers and other modules expect. ---- */
+function stripMongoFields(o) {
+  const { _id, __v, createdAt, updatedAt, ...rest } = o || {};
+  return rest;
+}
+function syncDoctorsToLocal(doctors) {
+  if (!Array.isArray(doctors)) return;
+  Store.write('doctors', doctors.map((d) => stripMongoFields(d)));
+}
+function syncDepartmentsToLocal(departments) {
+  if (!Array.isArray(departments)) return;
+  Store.write('departments', departments.map((d) => stripMongoFields(d)));
+}
+
 /* ---------- Toast ---------- */
 
 let toastTimer;

@@ -679,7 +679,7 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 .patient-nav { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-left: auto; }
 .patient-nav-link { padding: 7px 11px; border-radius: 8px; color: var(--text-2, #40536b); text-decoration: none; font-size: 14px; font-weight: 600; }
 .patient-nav-link:hover { background: var(--teal-50); color: var(--teal-700); }
-.patient-nav-link.active { background: var(--teal-600); color: #fff; }
+.patient-nav-link.active { background: var(--teal-700); color: #fff; }
 .patient-admin-link { margin-left: 4px; }
 .patient-main { flex: 1; width: 100%; max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
 .patient-footer { border-top: 1px solid var(--border); padding: 16px 20px; text-align: center; color: var(--muted); font-size: 13px; background: var(--surface); }
@@ -696,6 +696,7 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 
 .patient-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; max-width: 520px; }
 .patient-card h2 { margin: 0 0 6px; color: var(--text); }
+.patient-card h1 { margin: 0 0 6px; color: var(--text); font-size: 22px; line-height: 1.2; }
 .patient-card .form-actions { margin-top: 6px; }
 .patient-muted { color: var(--muted); font-size: 13px; }
 .field-error { color: var(--rose-600); font-size: 13px; margin: 8px 0 0; }

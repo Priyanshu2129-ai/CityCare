@@ -8,13 +8,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=3">
+  <link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 
   <!-- Welcome / Role selection screen (shown by default) -->
   <div class="welcome-screen" id="welcomeScreen" hidden>
-    <div class="welcome-inner">
+    <main class="welcome-inner">
       <div class="welcome-brand">
         <span class="logo-sm" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l2 6 3-14 3 10 2-2h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -44,7 +44,7 @@
           <span class="btn btn-secondary welcome-card-btn">Login as Patient</span>
         </a>
       </div>
-    </div>
+    </main>
   </div>
 
   <!-- Login screen -->
@@ -67,7 +67,6 @@
           <input class="input" id="loginPass" type="password" autocomplete="current-password" placeholder="password">
         </div>
         <button type="submit" class="btn btn-primary btn-block">Sign In</button>
-        <p class="login-hint">Default: admin / admin123</p>
       </form>
       <p class="login-hint" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
         Patients &middot; <a href="#patient-login" class="text-link">Patient Login</a> &middot;
@@ -250,7 +249,7 @@
             <button type="button" id="patientLogout" class="btn btn-secondary btn-sm">Logout</button>
           </span>
         </nav>
-        <a href="#dashboard" class="btn btn-secondary btn-sm patient-admin-link" id="patientToAdmin">Admin Login</a>
+        <a href="#admin-login" class="btn btn-secondary btn-sm patient-admin-link" id="patientToAdmin">Admin Login</a>
       </div>
     </header>
     <main class="patient-main" id="patientMount"></main>
@@ -285,6 +284,6 @@
   <script src="js/modules/settings.js"></script>
   <script src="js/modules/contact.js?v=4"></script>
   <script src="js/app.js?v=7"></script>
-<script src="js/modules/patientPortal.js?v=6"></script>
+<script src="js/modules/patientPortal.js?v=7"></script>
 </body>
 </html>

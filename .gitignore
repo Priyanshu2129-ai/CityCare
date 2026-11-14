@@ -12,5 +12,16 @@ node_modules/
 *.log
 npm-debug.log*
 
+# Backup files
+*.bak
+*.bak-*
+*.bak-phase*
+
 # Runtime data
 server/data/
+
+# Editor / assistant local state (never commit agent memory or local indices)
+.adcode/
+.idea/
+.vscode/
+*.local

@@ -505,8 +505,14 @@ app.post('/api/contact', async (req, res) => {
     });
   }
 
+  // From MUST be an address the authenticated account is allowed to send from
+  // (the Gmail/SMTP account itself). Gmail rejects messages sent "as" an
+  // arbitrary, unowned visitor address. The visitor's address goes in replyTo
+  // so the admin can reply directly to them.
+  const fromName = 'CityCare Hospital Website';
+  const fromAddr = process.env.FROM_EMAIL || ADMIN_EMAIL;
   const mailOptions = {
-    from: `${body.name} <${body.email}>`,
+    from: `${fromName} <${fromAddr}>`,
     to: ADMIN_EMAIL,
     replyTo: body.email,
     subject: `[CityCare Contact] ${body.subject}`,
@@ -540,9 +546,11 @@ app.post('/api/contact', async (req, res) => {
   };
 
   try {
-    await transporter.sendMail(mailOptions);
+    const info = await transporter.sendMail(mailOptions);
+    // Safe diagnostic: message-id + recipient, never body contents or secrets.
+    console.log(`Contact email delivered: id=${String(info && info.messageId || 'n/a').slice(0, 40)} to=${String(ADMIN_EMAIL).replace(/^([^@]+)@/, '***@')}`);
     saveEnquiry(record);
-    return res.json({ ok: true, id: record.id, message: 'Your message has been sent.' });
+    return res.json({ ok: true, id: record.id, delivered: true, message: 'Your message has been sent.' });
   } catch (err) {
     // Persist the enquiry regardless so it is not lost, but report clearly.
     saveEnquiry(record);

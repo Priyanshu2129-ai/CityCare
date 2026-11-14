@@ -8,9 +8,44 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=2">
 </head>
 <body>
+
+  <!-- Welcome / Role selection screen (shown by default) -->
+  <div class="welcome-screen" id="welcomeScreen" hidden>
+    <div class="welcome-inner">
+      <div class="welcome-brand">
+        <span class="logo-sm" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l2 6 3-14 3 10 2-2h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="welcome-logo-name">CityCare Hospital</span>
+      </div>
+      <span class="welcome-badge">Welcome</span>
+      <h1 class="welcome-title">Welcome to CityCare Hospital</h1>
+      <p class="welcome-subtitle">Your Health, Our Priority.</p>
+      <p class="welcome-desc">Access hospital services through your dedicated portal.</p>
+
+      <div class="welcome-roles">
+        <a href="#admin-login" class="welcome-card" data-welcome="admin">
+          <span class="welcome-card-icon">
+            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a5 5 0 0 1 5-5h6a5 5 0 0 1 5 5v1"/><path d="M19 3v4M21 5h-4"/></svg>
+          </span>
+          <span class="welcome-card-title">Admin Portal</span>
+          <span class="welcome-card-desc">Manage hospital operations, patients, appointments and departments.</span>
+          <span class="btn btn-primary welcome-card-btn">Login as Admin</span>
+        </a>
+        <a href="#patient-login" class="welcome-card" data-welcome="patient">
+          <span class="welcome-card-icon">
+            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1"/><circle cx="9.5" cy="7.5" r="3.5"/><path d="M17 10v4M19 12h-4"/></svg>
+          </span>
+          <span class="welcome-card-title">Patient Portal</span>
+          <span class="welcome-card-desc">Book appointments, manage your profile and track appointment status.</span>
+          <span class="btn btn-secondary welcome-card-btn">Login as Patient</span>
+        </a>
+      </div>
+    </div>
+  </div>
 
   <!-- Login screen -->
   <div class="login-screen" id="loginScreen">
@@ -249,7 +284,7 @@
   <script src="js/modules/activity.js"></script>
   <script src="js/modules/settings.js"></script>
   <script src="js/modules/contact.js?v=4"></script>
-  <script src="js/app.js?v=4"></script>
-<script src="js/modules/patientPortal.js?v=1"></script>
+  <script src="js/app.js?v=7"></script>
+<script src="js/modules/patientPortal.js?v=5"></script>
 </body>
 </html>

@@ -51,16 +51,19 @@
   const loginScreen = $('#loginScreen');
 
   function showPortal() {
-    // Always isolate the patient portal: hide the admin shell and admin login.
+    // Always isolate the patient portal: hide the admin shell, admin login and
+    // the welcome screen.
     if (portal) portal.hidden = false;
     if (adminLayout) adminLayout.hidden = true;
     if (loginScreen) loginScreen.classList.remove('show');
+    const w = $('#welcomeScreen'); if (w) w.classList.remove('show');
   }
   function hidePortal() {
+    // Hide the patient portal and admin shell. The current screen (welcome,
+    // admin login, or admin app) is managed by app.js' show* functions, this
+    // only clears the portal so those screens are not covered by it.
     if (portal) portal.hidden = true;
-    // Re-enter the admin login state (the admin auth gate decides what to show).
     if (adminLayout) adminLayout.hidden = true;
-    if (loginScreen) loginScreen.classList.add('show');
   }
 
   // Async wrapper like apiRequest but returning {ok,status,data}.
@@ -334,7 +337,9 @@
     PatientSession.end();
     state.user = null;
     api('/api/patient/logout', { method: 'POST' }).catch(() => {});
-    go('patient-home');
+    // Return to the Welcome / role selection screen.
+    if (window.showWelcome) { window.showWelcome(); }
+    history.replaceState(null, '', '#welcome');
     window.toast('You have been logged out.', 'success');
   }
 
@@ -345,13 +350,14 @@
     const logout = e.target.closest('#patientLogout');
     if (logout) { e.preventDefault(); doLogout(); }
     const toAdmin = e.target.closest('#patientToAdmin');
-    if (toAdmin) hidePortal(); // let the admin auth gate take over
+    if (toAdmin) { e.preventDefault(); window.location.hash = '#admin-login'; }
   });
 
   window.addEventListener('hashchange', () => {
-    if (isPatientRoute(window.location.hash)) {
+    const hash = window.location.hash.replace('#', '');
+    if (isPatientRoute(hash)) {
       showPortal();
-      const c = canon(window.location.hash);
+      const c = canon(hash);
       const needsAuth = c.includes('dashboard') || c.includes('book') || c.includes('appointments');
       if (!PatientSession.isAuthed() && needsAuth) {
         go('patient-login');
@@ -359,9 +365,10 @@
         render();
       }
     } else {
-      // Leaving the patient portal: hide it so the admin auth gate decides what
-      // to show (admin login if not authed, admin app if the session is valid).
-      hidePortal();
+      // Leaving the patient portal: delegate to the correct screen.
+      if (hash === 'welcome' && window.showWelcome) window.showWelcome();
+      else if (hash === 'admin-login' && window.showLogin) window.showLogin();
+      else hidePortal();
     }
   });
 

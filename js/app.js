@@ -13,12 +13,26 @@ const Session = {
 function showApp() {
   $('#loginScreen').classList.remove('show');
   $('#appLayout').hidden = false;
+  const w = $('#welcomeScreen'); if (w) w.classList.remove('show');
 }
+// Expose screen switchers so the patient portal router can delegate back to the
+// welcome / admin-login screens when leaving patient routes.
+window.showApp = showApp;
+window.showWelcome = showWelcome;
+window.showLogin = showLogin;
 
 function showLogin() {
+  const w = $('#welcomeScreen'); if (w) w.classList.remove('show');
+  if (window.PatientPortal) window.PatientPortal.hidePortal();
   $('#appLayout').hidden = true;
   $('#loginScreen').classList.add('show');
   const u = $('#loginUser'); if (u) u.focus();
+}
+function showWelcome() {
+  $('#loginScreen').classList.remove('show');
+  if (window.PatientPortal) window.PatientPortal.hidePortal();
+  $('#appLayout').hidden = true;
+  const w = $('#welcomeScreen'); if (w) w.classList.add('show');
 }
 
 async function boot() {
@@ -81,6 +95,7 @@ async function boot() {
       Session.start();
       showApp();
       toast('Welcome back, ' + name + '.', 'success');
+      history.replaceState(null, '', '#dashboard');
       initApp();
       refreshPatientsFromServer();
     } else if (!serverReachable) {
@@ -95,20 +110,23 @@ async function boot() {
     e.preventDefault();
     Session.end();
     apiLogout().catch(() => { /* ignore */ });
-    showLogin();
+    showWelcome();
     toast('You have been logged out.');
-    // reset hash to dashboard so it's not blocked by role logic
-    history.replaceState(null, '', '#dashboard');
+    // reset hash so the welcome screen is the landing route
+    history.replaceState(null, '', '#welcome');
   });
 
   // Public patient portal: if the current route is a patient page, show the
   // patient portal (independent of admin login) and skip the admin gate.
   const hashAtBoot = (window.location.hash || '').replace('#', '');
   if (window.PatientPortal && window.PatientPortal.isPatientRoute && window.PatientPortal.isPatientRoute(hashAtBoot)) {
-    // keep patient session if present; the portal module handles its own auth gating
     window.PatientPortal.showPortal();
     return;
   }
+  // Welcome / role selection is the default landing and its explicit route.
+  if (hashAtBoot === 'welcome' || hashAtBoot === '') { showWelcome(); return; }
+  // Explicit admin-login route and direct admin deep-links prompt for admin auth.
+  if (hashAtBoot === 'admin-login') { showLogin(); return; }
 
   // Route guard: a dashboard requires a VALID server session. If sessionStorage
   // claims we were logged in, confirm with /api/auth/me; if the server session

@@ -103,6 +103,21 @@ function render() {
         <div class="list-block" id="dashActivity">${activityList(activity)}</div>
       </div>
     </div>
+
+    <div class="card" style="margin-top:18px">
+      <div class="card-head">
+        <h2>Email Diagnostics</h2>
+        <span class="chip chip-purple">Temporary admin check</span>
+      </div>
+      <p style="margin:0 0 12px;color:var(--muted);font-size:13px">
+        Sends one test email to the configured admin address to confirm Gmail/SMTP delivery.
+        This is an administrative check only and is not shown to site visitors.
+      </p>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="verifyEmailBtn">Verify Email Delivery</button>
+        <span id="emailVerifyResult" style="font-size:13px;color:var(--muted)">Not checked yet.</span>
+      </div>
+    </div>
   `;
 
   drawCharts({ patients, doctors, appointments, bills });
@@ -190,6 +205,65 @@ function open() { navigateTo('dashboard'); }
 function onAction(e, btn) {
   if (btn && btn.dataset.page) navigateTo(btn.dataset.page);
 }
+
+/* Temporary admin email-delivery check (Admin Dashboard only).
+   Calls the protected /api/email/verify endpoint. The endpoint itself enforces
+   admin auth + CSRF + a 60s cooldown; this button only sends the request and
+   shows the safe result. Never displays credentials or internal details. */
+async function verifyEmailDelivery(btn, resultEl) {
+  if (!btn || !resultEl) return;
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Sending...';
+  resultEl.style.color = 'var(--muted)';
+  resultEl.textContent = 'Sending test email...';
+
+  const show = (text, color) => {
+    resultEl.textContent = text;
+    resultEl.style.color = color || 'var(--muted)';
+  };
+
+  try {
+    const resp = await fetch('/api/email/verify', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    let data = {};
+    try { data = await resp.json(); } catch (e) { /* non-JSON body */ }
+
+    if (resp.ok && data.ok && data.emailVerified) {
+      show('Email verification successful.', '#0f7a54');
+    } else if (resp.status === 401) {
+      show('Admin session expired. Please log in again.', '#b45309');
+    } else if (resp.status === 403) {
+      show('Authentication or CSRF check failed.', '#b91c1c');
+    } else if (resp.status === 429) {
+      show('Please wait a moment before trying again.', '#b45309');
+    } else if (resp.status === 503 && data.error === 'MAIL_NOT_CONFIGURED') {
+      show('Email sending is not configured on the server.', '#b91c1c');
+    } else if (!resp.ok) {
+      // SMTP failure (500 SEND_FAILED): show only the safe, classified reason.
+      const reason = data && data.reason ? (' — ' + data.reason) : '';
+      show('Email could not be sent.' + reason, '#b91c1c');
+    } else {
+      show('Unexpected response from the server.', '#b91c1c');
+    }
+  } catch (err) {
+    show('Could not reach the server (network error).', '#b91c1c');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
+// Delegated click handler (CSP-compliant; no inline onclick). Works even after
+// the dashboard re-renders, and only triggers for this dashboard button.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest && e.target.closest('#verifyEmailBtn');
+  if (!btn) return;
+  verifyEmailDelivery(btn, document.getElementById('emailVerifyResult'));
+});
 
 /* Small inline SVG icon set */
 const ICONS = {

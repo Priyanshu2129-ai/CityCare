@@ -218,13 +218,15 @@ mongoose.connection.on('connected', () => {
   // If a fresh Atlas database was just connected, seed the fictional demo
   // patients so the Patients page has data (only when the collection is empty).
   seedPatientsIfEmpty();
+  // One-time import of any legacy JSON enquiries so no data is lost (Stage 1).
+  importLegacyJsonEnquiries();
 });
 
 /* A minimal Mongoose model so the schema/model layer is wired and verified.
    NOT used for persistence yet - module migration is intentionally out of
    scope for this step. It links a collection to the connected database. */
 const contactEnquirySchema = new mongoose.Schema({
-  id: String,
+  id: { type: String, required: true, unique: true },
   name: String,
   email: String,
   phone: String,
@@ -232,8 +234,9 @@ const contactEnquirySchema = new mongoose.Schema({
   message: String,
   date: String,
   time: String,
-  status: { type: String, default: 'new' }
-}, { collection: 'contactEnquiries' });
+  status: { type: String, default: 'new' },
+  createdAt: { type: Date, default: Date.now }
+}, { collection: 'contactEnquiries', timestamps: false });
 const ContactEnquiry = mongoose.model('ContactEnquiry', contactEnquirySchema);
 
 /* ---- Email transport (Nodemailer) ----
@@ -343,18 +346,61 @@ const FROM_EMAIL = process.env.FROM_EMAIL || ADMIN_EMAIL;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/* Persist enquiries server-side too (JSON file). This is separate from the
-   browser's localStorage so a copy survives even if the visitor clears their cache. */
+/* ---- Contact enquiry persistence: MongoDB (replaces the old JSON file).
+   Stage 1 of the Vercel migration: server-side enquiries now live in MongoDB
+   so they persist on serverless hosts (Vercel's filesystem is ephemeral). */
+
+// Path of the legacy JSON enquiry file, kept only for the one-time import so
+// no existing enquiries are lost during migration.
 const DATA_FILE = path.join(__dirname, 'data', 'enquiries.json');
-function loadEnquiries() {
-  try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); }
-  catch (e) { return []; }
+
+let enquiriesImportDone = false;
+async function importLegacyJsonEnquiries() {
+  // One-time best-effort import so existing JSON enquiries are never lost.
+  // Stops after the first successful run (guarded by enquiriesImportDone).
+  if (enquiriesImportDone) return 0;
+  enquiriesImportDone = true;
+  try {
+    if (!fs.existsSync(DATA_FILE)) return 0;
+    const legacy = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    if (!Array.isArray(legacy) || legacy.length === 0) return 0;
+    let imported = 0;
+    for (const rec of legacy) {
+      if (!rec || !rec.id) continue;
+      const exists = await ContactEnquiry.exists({ id: rec.id }).catch(() => null);
+      if (!exists) {
+        await ContactEnquiry.create(rec).catch(() => null);
+        imported++;
+      }
+    }
+    if (imported > 0) console.log(`Contact enquiries migrated from JSON to MongoDB: ${imported}`);
+    return imported;
+  } catch (e) {
+    // Non-fatal: log only a generic message, never contents/secrets.
+    console.error('Legacy enquiry JSON import skipped:', String(e && e.message || 'error').slice(0, 120));
+    return 0;
+  }
 }
-function saveEnquiry(record) {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true }); // ensure server/data exists
-  const list = loadEnquiries();
-  list.push(record);
-  fs.writeFileSync(DATA_FILE, JSON.stringify(list, null, 2));
+
+async function saveEnquiryMongo(record) {
+  await ContactEnquiry.create(record);
+}
+
+// Safe persistence: best-effort Mongo insert. A DB error must never crash the
+// request or leak internals - the enquiry is still returned to the client with
+// an honest "storedLocally" flag, and any error is logged secret-safely.
+async function persistEnquiry(record) {
+  try {
+    await saveEnquiryMongo(record);
+    return { ok: true };
+  } catch (e) {
+    console.error('Enquiry store failed:', String(e && e.message || 'error').slice(0, 120));
+    return { ok: false };
+  }
+}
+
+async function listEnquiriesMongo() {
+  return ContactEnquiry.find().sort({ createdAt: -1 }).lean();
 }
 
 /* ---- Health check (used by the frontend to detect whether email is available) ---- */
@@ -491,17 +537,32 @@ app.post('/api/contact', async (req, res) => {
     status: 'new'
   };
 
-  // Validate email transport exists before attempting to send.
+  // Persist to MongoDB FIRST. Storage status must be honest: if the enquiry
+  // cannot be stored, we return an error and do NOT attempt email or claim
+  // success. This keeps "message saved" clearly separate from "email sent".
+  const saved = await persistEnquiry(record);
+  if (!saved.ok) {
+    // Do NOT silently discard: return a safe error and log secret-safely.
+    return res.status(500).json({
+      ok: false,
+      stored: false,
+      error: 'STORAGE_FAILED',
+      message: 'Your message could not be saved. Please try again in a moment or contact us by phone.'
+    });
+  }
+
+  // Email transport + delivery (status independent of storage).
   let transporter;
   try { transporter = buildTransport(); }
   catch (e) {
-    // Not configured: persist locally, but do NOT claim email was sent.
-    saveEnquiry(record);
+    // Stored in MongoDB, but email not configured. Do NOT claim it was emailed.
+    // The frontend already saved to its own inbox; this is the server copy.
     return res.status(503).json({
       ok: false,
-      savedLocally: true,
+      stored: true,
+      delivered: false,
       error: 'MAIL_NOT_CONFIGURED',
-      message: 'Email sending is not configured on the server. Add SMTP or Gmail credentials to server/.env and restart the server. Your enquiry was saved but no email was sent.'
+      message: 'Email sending is not configured on the server. Your message was saved but no email was sent.'
     });
   }
 
@@ -549,24 +610,40 @@ app.post('/api/contact', async (req, res) => {
     const info = await transporter.sendMail(mailOptions);
     // Safe diagnostic: message-id + recipient, never body contents or secrets.
     console.log(`Contact email delivered: id=${String(info && info.messageId || 'n/a').slice(0, 40)} to=${String(ADMIN_EMAIL).replace(/^([^@]+)@/, '***@')}`);
-    saveEnquiry(record);
-    return res.json({ ok: true, id: record.id, delivered: true, message: 'Your message has been sent.' });
+    // Enquiry was already stored in MongoDB (before sending). Both storage and
+    // delivery succeeded -> honest success.
+    return res.json({ ok: true, id: record.id, delivered: true, stored: true, message: 'Your message has been sent.' });
   } catch (err) {
-    // Persist the enquiry regardless so it is not lost, but report clearly.
-    saveEnquiry(record);
-    // Secret-safe: log only the classified reason + a redacted error message,
-    // never credentials, the App Password, or the connection string.
+    // The enquiry is already stored in MongoDB (persisted before sending);
+    // only the email failed. Secret-safe: log the classified reason + a
+    // redacted message, never credentials or message contents.
     const diag = classifySendError(err);
     const redactedMsg = String(err && err.message || '').replace(/[\r\n]/g, ' ').slice(0, 200);
     console.error(`Email send failed: reason=${diag.reason}`, redactedMsg ? `| (${redactedMsg})` : '');
     return res.status(500).json({
       ok: false,
-      savedLocally: true,
+      stored: true,
+      delivered: false,
       error: 'SEND_FAILED',
       reason: diag.reason,
       setupProblem: gmailSetupDiagnostic(), // safe, credential-free guidance
-      message: diag.detail + ' Your enquiry was saved but the email was not sent.'
+      message: diag.detail + ' Your message was saved but the email was not sent.'
     });
+  }
+});
+
+/* ---- Admin: read stored enquiries from MongoDB (admin-only).
+   The public POST /api/contact persists to MongoDB; this protected route lets
+   an authenticated admin retrieve them. Enquiries are also still mirrored to
+   the admin inbox in the browser's localStorage, so this DB-backed source is
+   the authoritative server-side copy. Unauthorized -> 401, non-admin -> 403. */
+app.get('/api/contact/enquiries', requireAdmin, async (req, res) => {
+  try {
+    const list = await listEnquiriesMongo();
+    return res.json({ ok: true, count: list.length, enquiries: list });
+  } catch (e) {
+    console.error('Enquiry list failed:', String(e && e.message || 'error').slice(0, 120));
+    return res.status(500).json({ ok: false, error: 'DB_ERROR', message: 'Could not retrieve enquiries. Please try again.' });
   }
 });
 

@@ -23,6 +23,49 @@ let msgFilter = 'all'; // all | new | read | resolved
 const CONTACT_API = (window.CITYCARE_CONTACT_API || '').replace(/\/$/, '');
 let contactSending = false; // guards against duplicate submissions
 
+// Admin inbox state. Enquiries are fetched from MongoDB via the protected
+// GET /api/contact/enquiries and mirrored into the LocalStorage 'contact'
+// store (the Store is the existing inbox source the UI already renders from),
+// so the MongoDB copy is authoritative at load while search/status/actions
+// keep working unchanged.
+const inbox = { loading: false, error: null };
+
+async function fetchInboxFromServer() {
+  if (inbox.loading) return;
+  inbox.loading = true;
+  inbox.error = null;
+  renderInbox();
+  try {
+    const resp = await fetch(CONTACT_API + '/api/contact/enquiries', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    let data = {};
+    try { data = await resp.json(); } catch (e) { /* non-JSON */ }
+    if (resp.ok && data.ok && Array.isArray(data.enquiries)) {
+      // Mirror MongoDB enquiries into the Store, merging any local-only rows.
+      const local = Store.getAll('contact') || [];
+      const byId = {};
+      local.forEach((m) => { if (m && m.id) byId[m.id] = m; });
+      data.enquiries.forEach((m) => { if (m && m.id) byId[m.id] = m; });
+      Store.write('contact', Object.values(byId));
+      inbox.error = null;
+    } else if (resp.status === 401 || resp.status === 403) {
+      inbox.error = 'unauthorized';
+    } else if (resp.status >= 500) {
+      inbox.error = 'dberror';
+    } else {
+      inbox.error = 'unexpected';
+    }
+  } catch (e) {
+    inbox.error = 'offline';
+  } finally {
+    inbox.loading = false;
+    renderInbox();
+  }
+}
+
 const STATUS_META = {
   new: { label: 'New', cls: 'pending' },
   read: { label: 'Read', cls: 'scheduled' },
@@ -230,6 +273,8 @@ function render() {
   document.getElementById('msgFilterSelect').value = msgFilter;
   document.getElementById('msgSearch').addEventListener('input', (e) => { msgQuery = e.target.value; renderInbox(); });
   document.getElementById('msgFilterSelect').addEventListener('change', (e) => { msgFilter = e.target.value; renderInbox(); });
+  // Load the admin inbox from MongoDB (mirrors into the local Store).
+  fetchInboxFromServer();
 }
 
 function filterMessages() {
@@ -290,6 +335,26 @@ function renderInbox() {
   const wrap = $('#msgTableWrap');
   const count = $('#msgCount');
   if (!wrap) return;
+  if (inbox.loading) {
+    if (count) count.textContent = 'Loading...';
+    wrap.innerHTML = '<p class="empty-block" style="color:var(--muted)">Loading messages...</p>';
+    return;
+  }
+  if (inbox.error === 'unauthorized') {
+    if (count) count.textContent = 'Sign in required';
+    wrap.innerHTML = '<p class="empty-block" style="color:#b45309">Your admin session has expired. Please log in to view contact messages.</p>';
+    return;
+  }
+  if (inbox.error === 'offline') {
+    if (count) count.textContent = 'Offline';
+    wrap.innerHTML = '<p class="empty-block" style="color:#b45309">Could not reach the server. Showing locally saved messages.</p>';
+    return;
+  }
+  if (inbox.error === 'dberror' || inbox.error === 'unexpected') {
+    if (count) count.textContent = 'Error';
+    wrap.innerHTML = '<p class="empty-block" style="color:#b91c1c">Could not load messages from the server. Please try again.</p>';
+    return;
+  }
   const list = filterMessages();
   if (count) count.textContent = list.length + ' message' + (list.length === 1 ? '' : 's');
   wrap.innerHTML = list.length ? messagesList(list) : '<p class="empty-block">No messages found.</p>';

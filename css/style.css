@@ -69,6 +69,12 @@ h1, h2, h3, h4 { margin: 0; font-weight: 700; letter-spacing: -0.01em; }
 svg { display: block; }
 
 .layout { display: flex; min-height: 100vh; }
+/* The hidden attribute must always win over any `display` above it. Without
+   this, #appLayout stays `display:flex` in the document flow while the patient
+   portal or welcome screen is active, inflating html/body height and producing
+   a large blank scroll area. */
+.layout[hidden] { display: none !important; }
+#loginScreen:not(.show) { display: none !important; }
 .main { flex: 1; padding: 28px 30px 48px; min-width: 0; margin-left: 252px; }
 .main > .page { display: none; }
 .main > .page.active { display: block; animation: fadeUp .25s ease; }
@@ -651,11 +657,22 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 /* =========================================================
    Patient Portal (separate from the admin app)
    ========================================================= */
-.patient-portal { min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
+.patient-portal { min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--text); }
 .patient-portal[hidden] { display: none !important; }
-
+/* Each portal section spans full width; the INNER content is centered with an
+   equal max-width so dashboard/login/register/appointment pages share one
+   consistent column. */
+.patient-header, .patient-main, .patient-footer { width: 100%; }
 .patient-header { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 30; }
-.patient-header-inner { max-width: 1100px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.patient-main {
+  flex: 1; width: 100%; max-width: 1100px; margin: 0 auto; padding: 28px 20px 48px;
+  display: flex; flex-direction: column; align-items: stretch; box-sizing: border-box;
+}
+.patient-header-inner { width: 100%; max-width: 1100px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; box-sizing: border-box; }
+.patient-footer { width: 100%; }
+/* Center compact single-column forms/cards while keeping wide content full. */
+.patient-main > .patient-card { margin-left: auto; margin-right: auto; }
+.patient-main > .patient-hero, .patient-main > .patient-features, .patient-main > .patient-actions { width: 100%; }
 .patient-brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; }
 .patient-brand-name { font-weight: 700; color: var(--teal-700); }
 .patient-brand-name small { display: block; font-weight: 600; color: var(--muted); font-size: 12px; }

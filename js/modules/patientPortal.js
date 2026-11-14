@@ -21,15 +21,47 @@
     end() { sessionStorage.removeItem(this.key); }
   };
 
-  // Pages this portal handles (hash routes).
-  const PATIENT_ROUTES = ['patient-home', 'patient-login', 'patient-register', 'patient-dashboard', 'patient-book', 'patient-appointments'];
-  function isPatientRoute(hash) { return PATIENT_ROUTES.includes((hash || '').replace('#', '')); }
+  // Canonical route name (case + separator insensitive). Accepts both the
+  // task's forms (#patientLogin, #patientPortal) and the fallback dash form
+  // (#patient-login, #patient-home).
+  function canon(hash) {
+    return String(hash || '').replace('#', '')
+      .replace(/[_-]+/g, '')      // strip dashes/underscores
+      .toLowerCase();             // case-insensitive -> 'patientlogin'
+  }
+  function isPatientRoute(hash) {
+    const c = canon(hash);
+    return ['patienthome', 'patientlogin', 'patientregister', 'patientdashboard', 'patientbook', 'patientappointments', 'patientportal'].includes(c);
+  }
+  // Map a route to its canonical dash form used by the render() switch.
+  function routeName(hash) {
+    const c = canon(hash);
+    return c === 'patientlogin' ? 'patient-login'
+      : c === 'patientregister' ? 'patient-register'
+      : c === 'patientdashboard' ? 'patient-dashboard'
+      : c === 'patientbook' ? 'patient-book'
+      : c === 'patientappointments' ? 'patient-appointments'
+      : c === 'patientportal' || c === 'patienthome' ? 'patient-home'
+      : 'patient-home';
+  }
 
   const $ = (s) => document.querySelector(s);
   const portal = $('#patientPortal');
+  const adminLayout = $('#appLayout');
+  const loginScreen = $('#loginScreen');
 
-  function showPortal() { if (portal) portal.hidden = false; }
-  function hidePortal() { if (portal) portal.hidden = true; }
+  function showPortal() {
+    // Always isolate the patient portal: hide the admin shell and admin login.
+    if (portal) portal.hidden = false;
+    if (adminLayout) adminLayout.hidden = true;
+    if (loginScreen) loginScreen.classList.remove('show');
+  }
+  function hidePortal() {
+    if (portal) portal.hidden = true;
+    // Re-enter the admin login state (the admin auth gate decides what to show).
+    if (adminLayout) adminLayout.hidden = true;
+    if (loginScreen) loginScreen.classList.add('show');
+  }
 
   // Async wrapper like apiRequest but returning {ok,status,data}.
   async function api(path, opts) {
@@ -74,7 +106,8 @@
 
   /* ---------- Navigation ---------- */
   function go(hash) {
-    if (window.location.hash !== '#' + hash) history.pushState(null, '', '#' + hash);
+    const target = routeName(hash); // canonical dash form for the URL
+    if (window.location.hash !== '#' + target) history.pushState(null, '', '#' + target);
     render();
   }
 
@@ -83,13 +116,14 @@
     const hash = (window.location.hash || '#patient-home').replace('#', '');
     if (!isPatientRoute(hash)) return;
     showPortal();
-    updateHeader(hash);
-    if (hash === 'patient-home') renderHome();
-    else if (hash === 'patient-login') renderLogin();
-    else if (hash === 'patient-register') renderRegister();
-    else if (hash === 'patient-dashboard') requireAuth(renderDashboard);
-    else if (hash === 'patient-book') requireAuth(renderBook);
-    else if (hash === 'patient-appointments') requireAuth(renderAppointments);
+    const route = routeName(hash);
+    updateHeader(route);
+    if (route === 'patient-home') renderHome();
+    else if (route === 'patient-login') renderLogin();
+    else if (route === 'patient-register') renderRegister();
+    else if (route === 'patient-dashboard') requireAuth(renderDashboard);
+    else if (route === 'patient-book') requireAuth(renderBook);
+    else if (route === 'patient-appointments') requireAuth(renderAppointments);
   }
 
   function updateHeader(hash) {
@@ -317,11 +351,17 @@
   window.addEventListener('hashchange', () => {
     if (isPatientRoute(window.location.hash)) {
       showPortal();
-      if (!PatientSession.isAuthed() && (window.location.hash.includes('dashboard') || window.location.hash.includes('book') || window.location.hash.includes('appointments'))) {
+      const c = canon(window.location.hash);
+      const needsAuth = c.includes('dashboard') || c.includes('book') || c.includes('appointments');
+      if (!PatientSession.isAuthed() && needsAuth) {
         go('patient-login');
       } else {
         render();
       }
+    } else {
+      // Leaving the patient portal: hide it so the admin auth gate decides what
+      // to show (admin login if not authed, admin app if the session is valid).
+      hidePortal();
     }
   });
 
@@ -334,9 +374,12 @@
       if (isPatientRoute(hash)) { showPortal(); render(); }
     } else if (isPatientRoute(hash)) {
       showPortal(); render();
+    } else {
+      // Non-patient route: ensure the admin login/app is not left corrupted.
+      if (portal) portal.hidden = true;
     }
   })();
 
   // Expose for app.js routing decisions (minimal integration with admin boot).
-  window.PatientPortal = { isPatientRoute, showPortal, hidePortal };
+  window.PatientPortal = { isPatientRoute, routeName, canon, showPortal, hidePortal };
 })();

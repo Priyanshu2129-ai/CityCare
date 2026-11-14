@@ -22,7 +22,8 @@ function showLogin() {
 }
 
 async function boot() {
-  Auth.ensure();            // ensure admin exists (default admin/admin123)
+  // Admin auth is server-side only (bcrypt + httpOnly session). There is no
+  // local credential seeding or client-side auth fallback.
   seedIfEmpty();            // seed departments/patients/doctors/etc if brand new
   initShell();              // bind mobile sidebar toggle on every load (auth-independent)
   const s = Store.read('settings', null) || defaultSettings();
@@ -72,7 +73,9 @@ async function boot() {
     }
 
     if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
-    const name = (sessionOk && Auth.get().name) || 'Admin';
+    // Greeting uses the server-confirmed session; Admin is a safe fallback.
+    const authedName = (() => { try { const a = Auth.get(); return a && a.name; } catch (e) { return null; } })();
+    const name = (sessionOk && authedName) || 'Admin';
 
     if (sessionOk) {
       Session.start();
@@ -97,6 +100,15 @@ async function boot() {
     // reset hash to dashboard so it's not blocked by role logic
     history.replaceState(null, '', '#dashboard');
   });
+
+  // Public patient portal: if the current route is a patient page, show the
+  // patient portal (independent of admin login) and skip the admin gate.
+  const hashAtBoot = (window.location.hash || '').replace('#', '');
+  if (window.PatientPortal && window.PatientPortal.isPatientRoute && window.PatientPortal.isPatientRoute(hashAtBoot)) {
+    // keep patient session if present; the portal module handles its own auth gating
+    window.PatientPortal.showPortal();
+    return;
+  }
 
   // Route guard: a dashboard requires a VALID server session. If sessionStorage
   // claims we were logged in, confirm with /api/auth/me; if the server session

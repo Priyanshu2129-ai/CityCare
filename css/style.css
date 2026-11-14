@@ -576,3 +576,45 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
   .modal-overlay { position: static; padding: 0; overflow: visible; }
   .print-active, .modal { }
 }
+
+/* =========================================================
+   Patient Portal (separate from the admin app)
+   ========================================================= */
+.patient-portal { min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
+.patient-portal[hidden] { display: none !important; }
+
+.patient-header { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 30; }
+.patient-header-inner { max-width: 1100px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.patient-brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; }
+.patient-brand-name { font-weight: 700; color: var(--teal-700); }
+.patient-brand-name small { display: block; font-weight: 600; color: var(--muted); font-size: 12px; }
+.patient-nav { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+.patient-nav-link { padding: 7px 11px; border-radius: 8px; color: var(--text-2, #40536b); text-decoration: none; font-size: 14px; font-weight: 600; }
+.patient-nav-link:hover { background: var(--teal-50); color: var(--teal-700); }
+.patient-nav-link.active { background: var(--teal-600); color: #fff; }
+.patient-admin-link { margin-left: 4px; }
+.patient-main { flex: 1; width: 100%; max-width: 1100px; margin: 0 auto; padding: 28px 20px 40px; }
+.patient-footer { border-top: 1px solid var(--border); padding: 16px 20px; text-align: center; color: var(--muted); font-size: 13px; background: var(--surface); }
+
+.patient-hero { background: linear-gradient(120deg, var(--teal-700), var(--teal-500)); color: #fff; border-radius: 16px; padding: 34px 30px; margin-bottom: 24px; }
+.patient-hero h1 { margin: 0 0 8px; font-size: 26px; }
+.patient-hero p { margin: 0 0 18px; opacity: 0.95; max-width: 620px; }
+.patient-hero-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.patient-hero-actions .btn-primary { background: #fff; color: var(--teal-700); }
+.patient-hero-actions .btn-secondary { background: rgba(255,255,255,0.16); color: #fff; border-color: rgba(255,255,255,0.35); }
+
+.patient-features { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+.patient-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+
+.patient-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; max-width: 520px; }
+.patient-card h2 { margin: 0 0 6px; color: var(--text); }
+.patient-card .form-actions { margin-top: 6px; }
+.patient-muted { color: var(--muted); font-size: 13px; }
+.field-error { color: var(--rose-600); font-size: 13px; margin: 8px 0 0; }
+
+@media (max-width: 640px) {
+  .patient-header-inner { padding: 10px 14px; gap: 10px; }
+  .patient-nav { margin-left: 0; }
+  .patient-hero { padding: 24px 18px; }
+  .patient-card { padding: 18px; }
+}

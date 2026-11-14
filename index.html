@@ -190,6 +190,36 @@
     </main>
   </div>
 
+  <!-- Patient Portal (separate from the admin app; role 'patient') -->
+  <div class="patient-portal" id="patientPortal" hidden>
+    <header class="patient-header">
+      <div class="patient-header-inner">
+        <a href="#patient-home" data-patient-nav="home" class="patient-brand">
+          <span class="logo-sm" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l2 6 3-14 3 10 2-2h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <span class="patient-brand-name" id="patientBrand">CityCare <small>Patient Portal</small></span>
+        </a>
+        <nav class="patient-nav" aria-label="Patient portal">
+          <a href="#patient-home" data-patient-nav="home" class="patient-nav-link">Home</a>
+          <a href="#patient-login" data-patient-nav="login" class="patient-nav-link">Patient Login</a>
+          <a href="#patient-register" data-patient-nav="register" class="patient-nav-link">Register</a>
+          <span id="patientAuthedLinks" hidden>
+            <a href="#patient-dashboard" data-patient-nav="dashboard" class="patient-nav-link">My Dashboard</a>
+            <a href="#patient-book" data-patient-nav="book" class="patient-nav-link">Book Appointment</a>
+            <a href="#patient-appointments" data-patient-nav="appointments" class="patient-nav-link">My Appointments</a>
+            <button type="button" id="patientLogout" class="btn btn-secondary btn-sm">Logout</button>
+          </span>
+        </nav>
+        <a href="#dashboard" class="btn btn-secondary btn-sm patient-admin-link" id="patientToAdmin">Admin Login</a>
+      </div>
+    </header>
+    <main class="patient-main" id="patientMount"></main>
+    <footer class="patient-footer">
+      <span>&copy; 2026 CityCare Hospital &middot; Patient Portal</span>
+    </footer>
+  </div>
+
   <!-- Shared modal -->
   <div class="modal-overlay" id="modalOverlay" aria-hidden="true" inert>
     <div class="modal" id="modal" role="dialog" aria-modal="true"></div>
@@ -216,5 +246,6 @@
   <script src="js/modules/settings.js"></script>
   <script src="js/modules/contact.js?v=4"></script>
   <script src="js/app.js?v=4"></script>
+<script src="js/modules/patientPortal.js?v=1"></script>
 </body>
 </html>

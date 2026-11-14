@@ -109,40 +109,27 @@ function ageFromDOB(dobISO) {
   return Math.max(0, age);
 }
 
-/* ---------- Auth (hashed password, never plaintext) ---------- */
-
-function hashPassword(pw) {
-  // Simple deterministic hash for a local demo. Never for production security.
-  let h = 5381;
-  const salt = 'citycare::';
-  const str = salt + pw;
-  for (let i = 0; i < str.length; i++) {
-    h = ((h << 5) + h + str.charCodeAt(i)) | 0;
-  }
-  return 'h' + (h >>> 0).toString(16);
-}
+/* ---------- Auth (profile store only — no client-side authentication) ----------
+   Admin authentication is handled entirely server-side: bcrypt password hash in
+   the server env + httpOnly session cookie. There is NO client-side password
+   hash, verify function, or demo credential. The local store is used only to
+   read/update the admin display name on the Settings page, never to log in. */
 
 const Auth = {
-  defaults: { username: 'admin', passwordHash: hashPassword('admin123'), name: 'Dr. Amina Yusuf', role: 'admin' },
+  /* Profile fallback for the Admin Profile display. This is NOT authentication:
+     the real admin login is validated server-side only (bcrypt + httpOnly
+     session), and no demo credential is seeded into LocalStorage. There is no
+     client-side password hash or verify path. */
+  defaults: { username: 'admin', name: 'Dr. Amina Yusuf', role: 'admin' },
 
-  ensure() {
-    if (!Store.read('auth', null)) {
-      Store.write('auth', this.defaults);
-    }
-    return this.get();
-  },
   get() { return Store.read('auth', null); },
-  update(patch) { Store.write('auth', { ...this.get(), ...patch }); },
-  verify(username, password) {
-    const a = this.get();
-    if (!a) return false;
-    return a.username === username.trim() && a.passwordHash === hashPassword(password);
-  },
-  changePassword(oldPw, newPw) {
-    const a = this.get();
-    if (a.passwordHash !== hashPassword(oldPw)) return false;
-    this.update({ passwordHash: hashPassword(newPw) });
-    return true;
+  update(patch) { Store.write('auth', { ...(this.get() || this.defaults), ...patch }); },
+  changePassword() {
+    // Obsolete: admin passwords are managed server-side (bcrypt ADMIN_PASSWORD_HASH
+    // in the server environment). There is no stored client password to change,
+    // so client-side "change password" always reports failure - it can never
+    // replace the server credential.
+    return false;
   }
 };
 
@@ -272,6 +259,7 @@ function seedIfEmpty() {
       table[key].forEach((row) => Store.add(key, row));
     }
   });
-  Auth.ensure();
+  // NOTE: Auth demo credentials are intentionally NOT seeded. Admin auth is
+  // server-side only (bcrypt + httpOnly session); there is no local fallback.
   if (!Store.read('settings', null)) Store.write('settings', defaultSettings());
 }

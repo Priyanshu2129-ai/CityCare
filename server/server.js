@@ -505,6 +505,15 @@ app.post('/api/email/verify', requireAdmin, csrfGuard, async (req, res) => {
 /* ---- Patients module (MongoDB CRUD, admin-only) ---- */
 app.use('/api/patients', patientRouter);
 
+/* ---- Patient Portal (separate role 'patient'; isolated from admin) ----
+   Patient accounts + auth and patient appointments. These routers mount their
+   own role/ownership middleware internally. Admin sessions cannot pass
+   requirePatient, and patient sessions cannot pass requireAdmin. */
+const patientAccountRouter = require('./patientAccount').router;
+const patientAppointmentRouter = require('./patientAppointment').router;
+app.use('/api/patient', patientAccountRouter);
+app.use('/api/patient', patientAppointmentRouter);
+
 /* ---- Contact endpoint ---- */
 app.post('/api/contact', async (req, res) => {
   const { name, email, phone, subject, message } = req.body || {};

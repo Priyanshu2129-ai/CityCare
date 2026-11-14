@@ -11,6 +11,12 @@
 let apptStatus = '';
 let apptView = 'list'; // 'list' | 'day' | 'month'
 
+/* ---- Admin: Patient Portal appointment requests (MongoDB, admin-only) ---- */
+const PATIENT_API = (window.CITYCARE_API_BASE || '');
+let patientAppts = [];
+let patientApptsLoading = false;
+let patientApptsError = null; // null | 'unauthorized' | 'dberror' | 'offline'
+
 /* One delegated search listener for this module, registered once. */
 document.addEventListener('input', (e) => {
   if (e.target.dataset && e.target.dataset.search === 'appointments') {
@@ -84,6 +90,109 @@ function appointmentRows(list) {
 
 function emptyRow(cols) {
   return `<tr><td colspan="${cols}" class="empty-block">No appointments match your filters.</td></tr>`;
+}
+
+async function loadPatientAppointments() {
+  if (patientApptsLoading) return;
+  patientApptsLoading = true;
+  patientApptsError = null;
+  const holder = $('#patientApptWrap');
+  if (holder) holder.innerHTML = '<p class="empty-block" style="color:var(--muted)">Loading patient appointment requests...</p>';
+  try {
+    const resp = await fetch(PATIENT_API + '/api/patient/admin/appointments', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    let data = {};
+    try { data = await resp.json(); } catch (e) { /* non-JSON */ }
+    if (resp.ok && data.ok && Array.isArray(data.appointments)) {
+      patientAppts = data.appointments;
+      patientApptsError = null;
+    } else if (resp.status === 401 || resp.status === 403) {
+      patientApptsError = 'unauthorized';
+    } else if (resp.status >= 500) {
+      patientApptsError = 'dberror';
+    } else {
+      patientApptsError = 'unexpected';
+    }
+  } catch (e) {
+    patientApptsError = 'offline';
+  } finally {
+    patientApptsLoading = false;
+    renderPatientApptsSection();
+  }
+}
+
+// Admin approval actions: Approve / Reject / Complete a patient request.
+async function setPatientApptStatus(id, status) {
+  try {
+    const resp = await fetch(PATIENT_API + '/api/patient/admin/appointments/' + encodeURIComponent(id), {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ status })
+    });
+    let data = {};
+    try { data = await resp.json(); } catch (e) { /* non-JSON */ }
+    if (resp.ok && data.ok) {
+      toast('Appointment marked as ' + status + '.', 'success');
+      await loadPatientAppointments(); // refresh after every successful update
+      return;
+    }
+    const msg = (data && data.message) || 'Could not update the appointment.';
+    if (resp.status === 401 || resp.status === 403) toast('Admin session expired or unauthorized.', 'error');
+    else toast(msg, 'error');
+    // Refresh regardless so the UI reflects the true server state.
+    await loadPatientAppointments();
+  } catch (e) {
+    toast('Could not reach the server.', 'error');
+    await loadPatientAppointments();
+  }
+}
+
+function renderPatientApptsSection() {
+  const wrap = $('#patientApptWrap');
+  const count = $('#patientApptCount');
+  if (!wrap) return;
+  if (count) count.textContent = patientAppts.length + ' request' + (patientAppts.length === 1 ? '' : 's');
+  if (patientApptsLoading) { wrap.innerHTML = '<p class="empty-block" style="color:var(--muted)">Loading...</p>'; return; }
+  if (patientApptsError === 'unauthorized') { wrap.innerHTML = '<p class="empty-block" style="color:#b45309">Admin session expired. Please sign in to manage requests.</p>'; return; }
+  if (patientApptsError === 'offline') { wrap.innerHTML = '<p class="empty-block" style="color:#b45309">Could not reach the server.</p>'; return; }
+  if (patientApptsError) { wrap.innerHTML = '<p class="empty-block" style="color:#b91c1c">Could not load patient requests.</p>'; return; }
+
+  if (!patientAppts.length) { wrap.innerHTML = '<p class="empty-block">No patient appointment requests.</p>'; return; }
+
+  const statuses = { pending: 'pending', approved: 'confirmed', rejected: 'cancelled', completed: 'completed' };
+  wrap.innerHTML = `
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr>
+          <th>Patient</th><th>Doctor</th><th>Department</th><th>Date / Time</th><th>Reason</th><th>Status</th><th class="actions-col">Actions</th>
+        </tr></thead>
+        <tbody>
+          ${patientAppts.map((a) => `
+            <tr>
+              <td class="primary-text">${esc(a.patientName || '—')}</td>
+              <td>${esc(a.doctorName || a.doctorId)}</td>
+              <td>${esc(a.department || '—')}</td>
+              <td>${esc(a.date)} ${a.time ? '&middot; ' + esc(a.time) : ''}</td>
+              <td>${esc(a.reason || '—')}</td>
+              <td><span class="badge ${statuses[a.status] || statuses.pending}">${esc(capitalize(a.status))}</span></td>
+              <td class="actions-col">
+                <div class="actions">
+                  ${a.status === 'pending' ? `
+                    <button class="btn btn-sm" data-patient-appt-action="approved" data-id="${esc(a.id)}">Approve</button>
+                    <button class="btn btn-danger btn-sm" data-patient-appt-action="rejected" data-id="${esc(a.id)}">Reject</button>` : ''}
+                  ${a.status === 'approved' ? `
+                    <button class="btn btn-sm" data-patient-appt-action="completed" data-id="${esc(a.id)}">Complete</button>` : ''}
+                  ${a.status === 'pending' || a.status === 'approved' ? '' : '<span class="muted-text">—</span>'}
+                </div>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 function render() {
@@ -171,6 +280,17 @@ function render() {
         </table>
       </div>
     </div>
+
+    <!-- Admin: Patient Portal appointment requests (MongoDB) -->
+    <div class="card" style="margin-top:20px">
+      <div class="card-head">
+        <h2>Patient Portal Appointment Requests</h2>
+        <span class="chip chip-purple" id="patientApptCount">0 requests</span>
+      </div>
+      <div id="patientApptWrap">
+        <p class="empty-block" style="color:var(--muted)">Loading patient appointment requests...</p>
+      </div>
+    </div>
   `;
 
   const stSel = $('[data-filter-status]');
@@ -183,6 +303,9 @@ function render() {
     exportCSV('appointments.csv', ['ID', 'Patient', 'Doctor', 'Department', 'Date', 'Time', 'Type', 'Status', 'Reason'],
       all.map((a) => [a.id, patientName(a.patientId), doctorName(a.doctorId), a.department, a.date, a.time, a.type, a.status, a.reason || '']));
   });
+
+  // Load the MongoDB-backed patient appointment requests (admin) into the new section.
+  loadPatientAppointments();
 }
 
 /* ---- open(): New Appointment form ---- */
@@ -377,6 +500,17 @@ function cancelAppt(appt) {
     }
   });
 }
+
+/* Delegated click for the admin patient-appointment actions (approve/reject/complete).
+   Registered once here (not in render) so it never double-binds. */
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-patient-appt-action]');
+  if (!btn) return;
+  e.preventDefault();
+  // Note: buttons are only rendered for statuses that support the action, so the
+  // status mapping is consistent with the backend enum (approved/rejected/completed).
+  setPatientApptStatus(btn.dataset.id, btn.dataset.patientApptAction);
+});
 
 /* Register the page via the IIFE-local functions to avoid global name collisions. */
 registerPage('appointments', { render, open, onAction });

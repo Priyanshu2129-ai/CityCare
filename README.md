@@ -1,116 +1,85 @@
-# 🏥 CityCare — Hospital Management System
+🏥 CityCare — Hospital Management System
 
-A web-based Hospital Management System designed to organize essential hospital operations through a simple and user-friendly interface.
+<p align="center">
+  <strong>A web-based hospital management system for simpler and more accessible hospital services.</strong>
+</p><p align="center">
+  <a href="https://citycare-l61z.onrender.com/">
+    <img src="https://img.shields.io/badge/🌐_LIVE_DEMO-OPEN_CITYCARE-16a34a?style=for-the-badge" alt="Live Demo"/>
+  </a>
+  <a href="https://github.com/Priyanshu2129-ai/CityCare">
+    <img src="https://img.shields.io/badge/GitHub-Source_Code-181717?style=for-the-badge&logo=github" alt="GitHub Repository"/>
+  </a>
+</p>---
 
-## 📌 About the Project
+📌 About the Project
 
-CityCare is a student-built Hospital Management System project. It brings different hospital management modules together in one application, with a backend powered by Node.js, Express and MongoDB.
+CityCare is a Hospital Management System developed to make essential hospital information and management activities easier to access through a web application.
 
-## ✨ Features
+The project brings important hospital-related features together in one place, including patient management, doctor information, appointments, and administrative operations.
 
-- Dashboard
-- Patient Management
-- Doctor Management
-- Appointment Management
-- Department Management
-- Staff Management
-- Billing and Financial Management
-- Pharmacy Management
-- Laboratory Management
-- Medical Records
-- Reports and Analytics
-- Contact Us
+✨ Key Features
 
-## 🛠️ Tech Stack
+- 👨‍⚕️ Doctor and department management
+- 🧑‍🤝‍🧑 Patient management
+- 📅 Appointment management
+- 📊 Admin dashboard
+- 📩 Contact and inquiry system
+- 🔐 Admin authentication
+- 📱 Responsive user interface
 
-**Frontend**
-- HTML5
-- CSS3
-- JavaScript
+🛠️ Tech Stack
 
-**Backend**
-- Node.js
-- Express.js
-- Nodemailer
+Area| Technologies
+Frontend| HTML, CSS, JavaScript
+Backend| Node.js, Express.js
+Database| MongoDB
+Authentication| Express Session
+Deployment| Render
 
-**Database**
-- MongoDB
-- Mongoose
+🚀 Live Demo
 
-**Tools**
-- Git
-- GitHub
-- Visual Studio Code
+Visit CityCare: https://citycare-l61z.onrender.com/
 
-## 📂 Project Structure
+«Note: The hosted application may take a little time to respond after an inactive period.»
 
-```text
-CityCare/
-├── api/
-├── css/
-├── js/
-│   └── modules/
-├── server/
-│   ├── .env.example
-│   ├── auth.js
-│   ├── patient.js
-│   └── server.js
-├── .gitignore
-├── index.html
-└── README.md
-```
+💻 Run Locally
 
-## ⚙️ Local Setup
+1. Clone the repository:
+   
+   git clone https://github.com/Priyanshu2129-ai/CityCare.git
 
-### 1. Clone the repository
+2. Open the project folder:
+   
+   cd CityCare
 
-```bash
-git clone https://github.com/Priyanshu2129-ai/CityCare.git
-```
-
-### 2. Open the project
-
-```bash
-cd CityCare
-```
-
-### 3. Configure the backend
-
-```bash
-cd server
-```
-
-Create your own `.env` file using `.env.example` as a reference. Add your MongoDB connection string and other required environment variables.
-
-### 4. Install dependencies
-
-```bash
+3. Install backend dependencies:
+   
+   cd server
 npm install
-```
 
-### 5. Start the server
+4. Configure the required environment variables using the project's ".env.example" file. Never publish actual credentials or secret values.
 
-```bash
-npm start
-```
+5. Start the application using the start command configured in "server/package.json":
+   
+   npm start
 
-The server uses port `3000` by default, unless configured otherwise.
+6. Open the local URL shown by the server.
 
-## 🔐 Security
+🔒 Security Notes
 
-- Environment variables are kept outside frontend code.
-- Authentication and session management are handled by the backend.
-- Protected API routes require authorization.
-- Fictional demo data should be used for testing.
+- Sensitive configuration belongs in server-side environment variables.
+- Do not commit ".env" files, passwords, database URLs, or secret keys.
+- Use fictional demo records only.
 
-**Never upload your `.env` file or real credentials to GitHub.**
+👨‍💻 Developer
 
-## 👨‍💻 Developer
+Priyanshu Kumar
+Diploma Student — Computer Science Engineering
 
-**Priyanshu Kumar**
-
-GitHub: [@Priyanshu2129-ai](https://github.com/Priyanshu2129-ai)
+GitHub: "@Priyanshu2129-ai" (https://github.com/Priyanshu2129-ai)
 
 ---
 
-*CityCare — A student project focused on learning and building practical web applications.*
+<p align="center">
+  <strong>CityCare — Making Hospital Services More Accessible.</strong>
+</p>
